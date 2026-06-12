@@ -1,8 +1,9 @@
 """
-UI 通用组件 — PCL-CE 风格主题系统
-PCL-CE 风格（暗色适配）：卡片式布局、圆角控件、统一色彩体系。
+UI 通用组件 — 全新主题系统
+圆角统一12px、毛玻璃效果、深浅色主题切换、动效过渡。
 """
 
+import math
 import os
 import sys
 import configparser
@@ -12,8 +13,7 @@ from typing import Optional, Callable
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
-
-# ---------- Windows DPI 感知 ----------
+# ---------- Windows DPI ----------
 def enable_dpi_aware():
     if sys.platform != "win32":
         return
@@ -27,8 +27,7 @@ def enable_dpi_aware():
         except Exception:
             pass
 
-
-# ---------- Pillow 可选导入 ----------
+# ---------- Pillow ----------
 try:
     from PIL import ImageTk  # noqa: F401
     HAS_PIL = True
@@ -36,47 +35,184 @@ except ImportError:
     HAS_PIL = False
 
 
-# ==================== PCL-CE 风格色彩体系（暗色主题）====================
-C = {
-    "bg":             "#1a1b2e",   # 主背景
-    "bg_card":        "#252640",   # 卡片表面
-    "bg_card_hover":  "#2d2e48",   # 卡片悬浮
-    "bg_input":       "#1e1f35",   # 输入框
-    "bg_disabled":    "#2a2b42",   # 禁用状态
-    "bg_button":      "#3b82f6",   # 主按钮
-    "bg_button_hover":"#5b9cf6",   # 主按钮悬浮
-    "bg_secondary":   "#353650",   # 次要按钮
-    "bg_secondary_hover": "#40406a",
-    "bg_accent":      "#3b82f6",   # 强调色/选中
-    "bg_tag":         "#3b82f622", # 标签/标记
+# ==================== 主题系统 ====================
 
-    "fg":             "#f0f0f0",   # 主要文字
-    "fg_secondary":   "#9e9eb8",   # 次要文字
-    "fg_muted":       "#6e6e8a",   # 弱化文字
-    "fg_inverse":     "#1a1b2e",   # 反色文字
+RADIUS = 12  # 统一圆角
 
-    "border":         "#3a3b5a",   # 边框
-    "border_focus":   "#5b9cf6",   # 聚焦边框
-    "border_light":   "#4a4b6a",   # 浅边框
 
-    "primary":        "#3b82f6",   # 主色
-    "primary_hover":  "#5b9cf6",
-    "success":        "#4caf50",   # 成功
-    "error":          "#f44336",   # 错误
-    "warning":        "#ff9800",   # 警告
-    "info":           "#29b6f6",   # 信息
+def _rgba_alpha(hex_color: str, alpha: float) -> str:
+    """将 hex 颜色与 alpha 混合到白色背景上，模拟半透明效果。"""
+    if hex_color.startswith("#"):
+        hex_color = hex_color[1:]
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    a = max(0, min(1, alpha))
+    # 混合到白色背景
+    mr = int(r * a + 255 * (1 - a))
+    mg = int(g * a + 255 * (1 - a))
+    mb = int(b * a + 255 * (1 - a))
+    return f"#{mr:02x}{mg:02x}{mb:02x}"
 
-    "online":         "#4caf50",   # 服务器在线
-    "offline":        "#f44336",   # 服务器离线
-    "motd":           "#ffff55",   # MOTD 颜色
-    "player":         "#aaffaa",   # 玩家名
-    "version":        "#96c0f9",   # 版本号
 
-    "separator":      "#3a3b5a",   # 分隔线
-    "scrollbar":      "#353650",   # 滚动条
-    "scrollbar_hover":"#4a4b6a",
-    "shadow":         "#00000044", # 阴影
+LIGHT_THEME = {
+    # 页面背景渐变 #F5F7FA → #E4E8F0
+    "bg": "#F5F7FA",
+    "bg_card": "#FFFFFF",
+    "bg_card_hover": "#F0F4FF",
+    "bg_input": "#F0F2F5",
+    "bg_disabled": "#E8EAED",
+    "bg_button": "#2C83FD",
+    "bg_button_hover": "#2369CA",
+    "bg_secondary": "#E8EAED",
+    "bg_secondary_hover": "#D0D4DA",
+    "bg_accent": "#2C83FD",
+    "bg_tag": "#2C83FD18",
+    "sidebar": "#FFFFFF",
+    "sidebar_hover": "#F0F4FF",
+    "sidebar_active": "#E8F0FE",
+
+    "fg": "#18181A",
+    "fg_secondary": "#303133",
+    "fg_muted": "#909399",
+    "fg_inverse": "#FFFFFF",
+
+    "border": "#E4E7ED",
+    "border_focus": "#2C83FD",
+    "border_light": "#EBEEF5",
+
+    "primary": "#2C83FD",
+    "primary_hover": "#2369CA",
+    "success": "#61C758",
+    "error": "#E34D4F",
+    "warning": "#F5A623",
+    "info": "#4D9EFF",
+
+    "online": "#61C758",
+    "offline": "#E34D4F",
+    "motd": "#D4A017",
+    "player": "#61C758",
+    "version": "#2C83FD",
+
+    "separator": "#E4E7ED",
+    "scrollbar": "#D0D4DA",
+    "scrollbar_hover": "#B0B4BA",
+    "shadow": "#00000015",
+
+    # 毛玻璃背景
+    "glass_bg": "#FFFFFFE6",  # rgba(255,255,255,0.9) 混合到 #F5F7FA
+    "glass_border": "#FFFFFF40",
 }
+
+DARK_THEME = {
+    "bg": "#121212",
+    "bg_card": "#1E1E1E",
+    "bg_card_hover": "#2A2A2A",
+    "bg_input": "#2A2A2A",
+    "bg_disabled": "#333333",
+    "bg_button": "#4D9EFF",
+    "bg_button_hover": "#3A7FCC",
+    "bg_secondary": "#333333",
+    "bg_secondary_hover": "#404040",
+    "bg_accent": "#4D9EFF",
+    "bg_tag": "#4D9EFF22",
+    "sidebar": "#1A1A1A",
+    "sidebar_hover": "#252525",
+    "sidebar_active": "#2C2C2C",
+
+    "fg": "#EDEDED",
+    "fg_secondary": "#B0B0B0",
+    "fg_muted": "#707070",
+    "fg_inverse": "#121212",
+
+    "border": "#333333",
+    "border_focus": "#4D9EFF",
+    "border_light": "#2A2A2A",
+
+    "primary": "#4D9EFF",
+    "primary_hover": "#3A7FCC",
+    "success": "#61C758",
+    "error": "#E34D4F",
+    "warning": "#F5A623",
+    "info": "#4D9EFF",
+
+    "online": "#61C758",
+    "offline": "#E34D4F",
+    "motd": "#FFD700",
+    "player": "#61C758",
+    "version": "#4D9EFF",
+
+    "separator": "#333333",
+    "scrollbar": "#404040",
+    "scrollbar_hover": "#555555",
+    "shadow": "#00000030",
+
+    "glass_bg": "#1E1E1EE6",
+    "glass_border": "#FFFFFF15",
+}
+
+C = dict(LIGHT_THEME)  # 全局颜色字典，主题切换时更新
+
+
+class ThemeManager:
+    """主题管理器 — 管理深浅色主题切换。"""
+
+    _instance: Optional["ThemeManager"] = None
+    _listeners: list[Callable] = []
+    _dark_mode: bool = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._dark_mode = False
+        return cls._instance
+
+    @property
+    def is_dark(self) -> bool:
+        return self._dark_mode
+
+    def toggle(self) -> bool:
+        """切换主题，返回新模式 True=暗色 False=浅色。"""
+        self._dark_mode = not self._dark_mode
+        theme = DARK_THEME if self._dark_mode else LIGHT_THEME
+        C.clear()
+        C.update(theme)
+        self._notify()
+        return self._dark_mode
+
+    def set_light(self):
+        if self._dark_mode:
+            self._dark_mode = False
+            C.clear()
+            C.update(LIGHT_THEME)
+            self._notify()
+
+    def set_dark(self):
+        if not self._dark_mode:
+            self._dark_mode = True
+            C.clear()
+            C.update(DARK_THEME)
+            self._notify()
+
+    def add_listener(self, callback: Callable[[], None]):
+        """添加主题变更监听器。"""
+        self._listeners.append(callback)
+
+    def remove_listener(self, callback: Callable[[], None]):
+        if callback in self._listeners:
+            self._listeners.remove(callback)
+
+    def _notify(self):
+        for cb in self._listeners:
+            try:
+                cb()
+            except Exception:
+                pass
+
+
+def get_theme_manager() -> ThemeManager:
+    return ThemeManager()
+
+
+# ==================== 字体 ====================
 
 FONT = "微软雅黑"
 MONO = "Consolas"
@@ -91,12 +227,15 @@ F = {
     "mono":   (MONO, 11),
     "mono_sm":(MONO, 10),
     "mono_bold": (MONO, 11, "bold"),
-    "title":  ("微软雅黑", 26, "bold"),
-    "subtitle": ("微软雅黑", 12),
+    "title":  (FONT, 26, "bold"),
+    "subtitle": (FONT, 12),
     "emoji":  ("Segoe UI Emoji", 36),
+    "sidebar": (FONT, 13),
+    "sidebar_icon": (FONT, 18),
 }
 
-# 模块图标映射
+# ==================== 模块注册 ====================
+
 MODULE_ICONS = {
     "mc_ping":      "⛏",
     "chess":        "♚",
@@ -122,59 +261,158 @@ MODULE_NAMES = {
 }
 
 
+# ==================== Canvas 圆角矩形工具 ====================
+
+def _draw_rounded_rect(canvas: tk.Canvas, x0, y0, x1, y1, r=RADIUS,
+                       fill="", outline="", width=0, **kw):
+    """在 Canvas 上绘制圆角矩形。"""
+    r = min(r, (x1 - x0) / 2, (y1 - y0) / 2)
+    points = []
+    # 顺时针: 左上→右上→右下→左下
+    segments = 8  # 每角分段数
+    for i in range(4):
+        cx = x0 + r if i in (0, 3) else x1 - r
+        cy = y0 + r if i in (0, 1) else y1 - r
+        start_angle = 90 * i + 180
+        for j in range(segments + 1):
+            theta = math.radians(start_angle + 90 * j / segments)
+            points.append(cx + r * math.cos(theta))
+            points.append(cy + r * math.sin(theta))
+    return canvas.create_polygon(points, fill=fill, outline=outline, width=width,
+                                 smooth=True, **kw)
+
+
+def _draw_shadow(canvas: tk.Canvas, x0, y0, x1, y1, r=RADIUS, spread=1, blur=15):
+    """绘制阴影效果（多层半透明圆角矩形）。"""
+    items = []
+    layers = min(blur // 3, 8)
+    for i in range(layers, 0, -1):
+        alpha = 0.04 * (i / layers)
+        offset = spread + (layers - i) * 1.5
+        sx0, sy0 = x0 + offset, y0 + offset
+        sx1, sy1 = x1 + offset, y1 + offset
+        items.append(
+            _draw_rounded_rect(canvas, sx0, sy0, sx1, sy1, r=r + (layers - i),
+                               fill=f"#000000{int(alpha * 255):02x}",
+                               outline="", width=0)
+        )
+    return items
+
+
 # ==================== 圆角卡片容器 ====================
 
-class Card(tk.Frame):
-    """PCL-CE 风格的卡片容器 — 圆角背景、内边距、可选标题。"""
+class RoundedCard(tk.Frame):
+    """圆角卡片容器 — Canvas 绘制带阴影和圆角的卡片。"""
 
-    def __init__(self, parent, title="", padding=14, **kw):
-        super().__init__(parent, bg=C["bg_card"], **kw)
-        self._build(title, padding)
+    def __init__(self, parent, title="", padding=14, radius=RADIUS,
+                 with_shadow=True, glass=False, **kw):
+        super().__init__(parent, bg=C["bg"], **kw)
+        self._radius = radius
+        self._with_shadow = with_shadow
+        self._glass = glass
+        self._padding = padding
+        self._card_bg = C["glass_bg"] if glass else C["bg_card"]
+        self._title = title
+        self._canvas = tk.Canvas(self, highlightthickness=0, bd=0,
+                                 bg=C["bg"])
+        self._canvas.pack(fill=tk.BOTH, expand=True)
+        self.inner = tk.Frame(self._canvas, bg=self._card_bg)
 
-    def _build(self, title, padding):
-        self.config(highlightbackground=C["border"], highlightthickness=1, bd=0)
-        inner = tk.Frame(self, bg=C["bg_card"])
-        inner.pack(fill=tk.BOTH, expand=True, padx=padding - 2, pady=padding - 2)
+        # 绑定大小变化以重绘
+        self._canvas.bind("<Configure>", self._redraw)
+        self._bind_theme()
 
-        if title:
-            hdr = tk.Frame(inner, bg=C["bg_card"])
-            hdr.pack(fill=tk.X, pady=(0, 8))
-            tk.Label(hdr, text=title, font=F["h3"], fg=C["fg"], bg=C["bg_card"],
-                     anchor="w").pack(side=tk.LEFT)
-            sep = tk.Frame(hdr, bg=C["border"], height=1)
-            sep.pack(fill=tk.X, pady=(4, 0))
+    def _bind_theme(self):
+        mgr = get_theme_manager()
+        self._theme_cb = self._on_theme_change
+        mgr.add_listener(self._theme_cb)
 
-        self.inner = inner
+    def _on_theme_change(self):
+        self.config(bg=C["bg"])
+        self._card_bg = C["glass_bg"] if self._glass else C["bg_card"]
+        self.inner.config(bg=self._card_bg)
+        self._canvas.config(bg=C["bg"])
+        self._redraw()
+
+    def _redraw(self, event=None):
+        w = self._canvas.winfo_width() or 200
+        h = self._canvas.winfo_height() or 100
+        if w < 10 or h < 10:
+            return
+        self._canvas.delete("card_bg")
+        pad = 2
+        # 阴影
+        if self._with_shadow:
+            _draw_shadow(self._canvas, pad, pad, w - pad, h - pad,
+                         r=self._radius, spread=1, blur=15)
+        # 卡片背景
+        _draw_rounded_rect(self._canvas, pad, pad, w - pad, h - pad,
+                           r=self._radius, fill=self._card_bg,
+                           outline=C["border"], width=1,
+                           tags=("card_bg",))
+        # 放置 inner frame
+        ih = h - self._padding * 2
+        if self._title:
+            ih -= 28
+        self._canvas.coords(self._canvas.create_window(
+            w // 2, h // 2,
+            window=self.inner,
+            width=max(10, w - self._padding * 2 - 4),
+            height=max(10, ih),
+        ))
+        # 标题
+        if self._title:
+            self._canvas.create_text(
+                self._padding + 4, self._padding + 2,
+                text=self._title, anchor="nw",
+                font=F["h3"], fill=C["fg"],
+                tags=("card_bg",)
+            )
+
+    def destroy(self):
+        mgr = get_theme_manager()
+        if hasattr(self, '_theme_cb'):
+            mgr.remove_listener(self._theme_cb)
+        super().destroy()
 
 
-# ==================== 统一样式的控件工厂 ====================
+class Card(RoundedCard):
+    """兼容原 Card 类 — 直接使用 RoundedCard。"""
+    pass
+
+
+# ==================== 统一样式控件工厂 ====================
 
 def make_label(parent, text="", **kw):
     """统一样式标签。"""
-    defaults = {"bg": parent.cget("bg") if isinstance(parent, (tk.Frame, tk.LabelFrame)) else C["bg"],
-                "fg": C["fg_secondary"], "font": F["body"], "anchor": "w"}
+    defaults = {
+        "bg": parent.cget("bg") if isinstance(parent, (tk.Frame, tk.LabelFrame, tk.Canvas)) else C["bg"],
+        "fg": C["fg_secondary"], "font": F["body"], "anchor": "w"
+    }
     defaults.update(kw)
     return tk.Label(parent, text=text, **defaults)
 
 
 def make_heading(parent, text="", **kw):
-    """标题标签（带强调色）。"""
-    defaults = {"bg": parent.cget("bg") if isinstance(parent, (tk.Frame, tk.LabelFrame)) else C["bg"],
-                "fg": C["primary"], "font": F["h2"], "anchor": "w"}
+    """标题标签（带主色）。"""
+    defaults = {
+        "bg": parent.cget("bg") if isinstance(parent, (tk.Frame, tk.LabelFrame, tk.Canvas)) else C["bg"],
+        "fg": C["primary"], "font": F["h2"], "anchor": "w"
+    }
     defaults.update(kw)
     return tk.Label(parent, text=text, **defaults)
 
 
-def make_button(parent, text="", command: Callable | None = None, **kw):
-    """PCL-CE 风格主按钮 — 蓝色填充、圆角感、悬浮高亮。"""
+def make_button(parent, text="", command=None, **kw):
+    """主按钮 — 蓝色填充、12px圆角（模拟）、悬浮高亮。"""
     defaults = {
-        "bg": C["bg_button"], "fg": C["fg"], "font": F["body"],
-        "relief": tk.FLAT, "cursor": "hand2", "padx": 20, "pady": 4,
-        "activebackground": C["bg_button_hover"], "activeforeground": C["fg"],
+        "bg": C["bg_button"], "fg": C["fg_inverse"], "font": F["body"],
+        "relief": tk.FLAT, "cursor": "hand2", "padx": 20, "pady": 6,
+        "activebackground": C["bg_button_hover"], "activeforeground": C["fg_inverse"],
         "borderwidth": 0, "highlightthickness": 0,
     }
     defaults.update(kw)
-    btn = tk.Button(parent, text=text, command=command, **defaults)  # type: ignore[arg-type]
+    btn = tk.Button(parent, text=text, command=command, **defaults)
 
     def on_enter(e=None):
         if btn.cget("state") != tk.DISABLED:
@@ -190,15 +428,15 @@ def make_button(parent, text="", command: Callable | None = None, **kw):
 
 
 def make_secondary_button(parent, text="", command=None, **kw):
-    """次要按钮 — 暗色填充。"""
+    """次要按钮 — 灰色填充、12px圆角（模拟）。"""
     defaults = {
-        "bg": C["bg_secondary"], "fg": C["fg_secondary"], "font": F["small"],
-        "relief": tk.FLAT, "cursor": "hand2", "padx": 14, "pady": 3,
+        "bg": C["bg_secondary"], "fg": C["fg_secondary"], "font": F["body"],
+        "relief": tk.FLAT, "cursor": "hand2", "padx": 14, "pady": 5,
         "activebackground": C["bg_secondary_hover"], "activeforeground": C["fg"],
         "borderwidth": 0, "highlightthickness": 0,
     }
     defaults.update(kw)
-    btn = tk.Button(parent, text=text, command=command, **defaults)  # type: ignore[arg-type]
+    btn = tk.Button(parent, text=text, command=command, **defaults)
 
     def on_enter(e=None):
         if btn.cget("state") != tk.DISABLED:
@@ -214,7 +452,7 @@ def make_secondary_button(parent, text="", command=None, **kw):
 
 
 def make_entry(parent, width=20, **kw):
-    """PCL-CE 风格输入框 — 暗色背景、聚焦高亮。"""
+    """输入框 — 浅色背景、聚焦高亮、圆角（模拟）。"""
     defaults = {
         "bg": C["bg_input"], "fg": C["fg"], "insertbackground": C["fg"],
         "font": F["body"], "relief": tk.FLAT, "highlightthickness": 1.5,
@@ -246,7 +484,7 @@ def make_text(parent, height=5, **kw):
 def make_checkbutton(parent, text="", variable=None, **kw):
     """统一样式复选框。"""
     defaults = {
-        "bg": parent.cget("bg") if isinstance(parent, (tk.Frame, tk.LabelFrame)) else C["bg"],
+        "bg": parent.cget("bg") if isinstance(parent, (tk.Frame, tk.LabelFrame, tk.Canvas)) else C["bg"],
         "fg": C["fg"], "selectcolor": C["bg_input"],
         "font": F["body"], "activebackground": C["bg_card"],
         "activeforeground": C["fg"], "relief": tk.FLAT,
@@ -257,7 +495,7 @@ def make_checkbutton(parent, text="", variable=None, **kw):
 
 
 def make_combobox(parent, values=None, **kw):
-    """PCL-CE 风格下拉框。"""
+    """下拉框。"""
     try:
         from tkinter import ttk
         style = ttk.Style()
@@ -307,10 +545,90 @@ def make_scrollbar(parent, **kw):
     return tk.Scrollbar(parent, **defaults)
 
 
+def make_theme_toggle(parent, **kw):
+    """主题切换按钮。"""
+    mgr = get_theme_manager()
+    text = "🌙 深色" if not mgr.is_dark else "☀️ 浅色"
+
+    def toggle():
+        mgr.toggle()
+        btn.config(text="☀️ 浅色" if mgr.is_dark else "🌙 深色")
+
+    btn = make_secondary_button(parent, text=text, command=toggle, **kw)
+    return btn
+
+
+# ==================== 侧边栏按钮 ====================
+
+class SidebarButton(tk.Frame):
+    """侧边栏导航按钮 — 图标 + 名称、悬浮高亮、选中状态。"""
+
+    def __init__(self, parent, icon: str, text: str, active=False,
+                 command=None, **kw):
+        super().__init__(parent, bg=C["sidebar"], cursor="hand2", **kw)
+        self._command = command
+        self._active = active
+        self._build(icon, text)
+        self._bind_events()
+
+        self._theme_cb = self._on_theme_change
+        get_theme_manager().add_listener(self._theme_cb)
+
+    def _build(self, icon, text):
+        self._icon_label = tk.Label(self, text=icon, font=F["sidebar_icon"],
+                                    bg=C["sidebar"], fg=C["primary"])
+        self._icon_label.pack(side=tk.LEFT, padx=(18, 8), pady=10)
+
+        self._text_label = tk.Label(self, text=text, font=F["sidebar"],
+                                    bg=C["sidebar"], fg=C["fg"])
+        self._text_label.pack(side=tk.LEFT, pady=10)
+
+        self._update_active()
+
+    def _update_active(self):
+        bg = C["sidebar_active"] if self._active else C["sidebar"]
+        fg = C["primary"] if self._active else C["fg"]
+        self.config(bg=bg)
+        self._icon_label.config(bg=bg, fg=C["primary"])
+        self._text_label.config(bg=bg, fg=fg)
+
+    def _bind_events(self):
+        for w in (self, self._icon_label, self._text_label):
+            w.bind("<Enter>", self._on_enter)
+            w.bind("<Leave>", self._on_leave)
+            w.bind("<Button-1>", self._on_click)
+
+    def _on_enter(self, e=None):
+        if not self._active:
+            bg = C["sidebar_hover"]
+            self.config(bg=bg)
+            self._icon_label.config(bg=bg)
+            self._text_label.config(bg=bg)
+
+    def _on_leave(self, e=None):
+        self._update_active()
+
+    def _on_click(self, e=None):
+        if self._command:
+            self._command()
+
+    def set_active(self, active: bool):
+        self._active = active
+        self._update_active()
+
+    def _on_theme_change(self):
+        self.config(bg=C["sidebar"])
+        self._update_active()
+
+    def destroy(self):
+        get_theme_manager().remove_listener(self._theme_cb)
+        super().destroy()
+
+
 # ==================== 状态指示灯 ====================
 
 class StatusDot(tk.Canvas):
-    """PCL-CE 风格状态指示灯 — 绿色(在线)/红色(离线)圆点。"""
+    """状态指示灯 — 绿色(在线)/红色(离线)圆点。"""
 
     def __init__(self, parent, online=True, size=10, **kw):
         super().__init__(parent, width=size, height=size,
@@ -323,7 +641,8 @@ class StatusDot(tk.Canvas):
         self.delete("all")
         self.config(bg=self.master.cget("bg"))
         color = C["online"] if self._online else C["offline"]
-        self.create_oval(1, 1, self._size - 1, self._size - 1,
+        pad = 1
+        self.create_oval(pad, pad, self._size - pad, self._size - pad,
                          fill=color, outline=color)
 
     def set_status(self, online: bool):
@@ -331,29 +650,28 @@ class StatusDot(tk.Canvas):
         self._draw()
 
 
-# ==================== 服务器信息卡片（PCL-CE 风格）====================
+# ==================== 服务器信息卡片 ====================
 
 class ServerInfoCard(tk.Frame):
-    """
-    PCL-CE 风格的 Minecraft 服务器信息卡片。
-    参考 PCL-CE 的 MinecraftServer.xaml 布局：图标 | MOTD/版本 | 玩家信息。
-    """
+    """Minecraft 服务器信息卡片。"""
 
     def __init__(self, parent, **kw):
         super().__init__(parent, bg=C["bg_card"], **kw)
-        self.config(highlightbackground=C["border"], highlightthickness=1, bd=0)
         self._build()
+        self._theme_cb = self._on_theme_change
+        get_theme_manager().add_listener(self._theme_cb)
 
     def _build(self):
+        self.config(highlightbackground=C["border"], highlightthickness=1, bd=0)
         inner = tk.Frame(self, bg=C["bg_card"])
-        inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        inner.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
         inner.grid_columnconfigure(0, weight=0)
         inner.grid_columnconfigure(1, weight=1)
         inner.grid_columnconfigure(2, weight=0)
 
         # 服务器图标
         icon_frame = tk.Frame(inner, bg=C["bg_card"], width=64, height=64)
-        icon_frame.grid(row=0, column=0, padx=(0, 12))
+        icon_frame.grid(row=0, column=0, padx=(0, 14))
         icon_frame.grid_propagate(False)
         self._icon_label = tk.Label(icon_frame, text="", bg=C["bg_card"],
                                     font=("Segoe UI Emoji", 32))
@@ -366,7 +684,7 @@ class ServerInfoCard(tk.Frame):
         info_frame.grid(row=0, column=1, sticky="w")
         info_frame.grid_columnconfigure(0, weight=1)
 
-        self._motd_label = tk.Label(info_frame, text="", font=("微软雅黑", 14, "bold"),
+        self._motd_label = tk.Label(info_frame, text="", font=(FONT, 14, "bold"),
                                     fg=C["motd"], bg=C["bg_card"], anchor="w")
         self._motd_label.grid(row=0, column=0, sticky="w")
 
@@ -380,7 +698,7 @@ class ServerInfoCard(tk.Frame):
 
         # 右侧信息
         player_frame = tk.Frame(inner, bg=C["bg_card"])
-        player_frame.grid(row=0, column=2, sticky="ne", padx=(12, 0))
+        player_frame.grid(row=0, column=2, sticky="ne", padx=(14, 0))
 
         self._online_label = tk.Label(player_frame, text="", font=F["h3"],
                                       fg=C["success"], bg=C["bg_card"], anchor="e")
@@ -399,8 +717,21 @@ class ServerInfoCard(tk.Frame):
         self._error_label = tk.Label(inner, text="", font=F["body_bold"],
                                      fg=C["error"], bg=C["bg_card"], anchor="w")
 
+    def _on_theme_change(self):
+        self.config(bg=C["bg_card"])
+        self.config(highlightbackground=C["border"])
+        for child in self.winfo_children():
+            try:
+                child.config(bg=C["bg_card"])
+            except Exception:
+                pass
+            for grandchild in child.winfo_children():
+                try:
+                    grandchild.config(bg=C["bg_card"])
+                except Exception:
+                    pass
+
     def set_result(self, result: dict):
-        """填充服务器查询结果。"""
         if result.get("error"):
             self._icon_label.config(text="⚠")
             self._status_dot.set_status(False)
@@ -433,7 +764,6 @@ class ServerInfoCard(tk.Frame):
             self._player_list.config(text="")
 
     def set_error(self, msg: str):
-        """显示错误信息。"""
         self._icon_label.config(text="⚠")
         self._status_dot.set_status(False)
         self._motd_label.config(text="错误")
@@ -445,33 +775,37 @@ class ServerInfoCard(tk.Frame):
         self._error_label.pack(fill=tk.X, pady=(6, 0))
         self._error_label.config(text=msg)
 
+    def destroy(self):
+        get_theme_manager().remove_listener(self._theme_cb)
+        super().destroy()
 
-# ==================== 模块按钮（启动器用）====================
+
+# ==================== 模块按钮（启动器用）=====================
 
 class ModuleButton(tk.Frame):
-    """PCL-CE 风格的模块启动按钮 — 卡片式、悬浮高亮。"""
+    """模块启动按钮 — 卡片式、悬浮高亮。"""
 
     def __init__(self, parent, key: str, icon: str, name: str,
-                 command: Callable | None = None, **kw):
+                 command=None, **kw):
         super().__init__(parent, bg=C["bg_card"], cursor="hand2", **kw)
-        self.config(highlightbackground=C["border"], highlightthickness=1, bd=0)
         self._command = command
         self._build(icon, name)
         self._bind_events()
+        self._theme_cb = self._on_theme_change
+        get_theme_manager().add_listener(self._theme_cb)
 
     def _build(self, icon, name):
+        self.config(highlightbackground=C["border"], highlightthickness=1, bd=0)
         inner = tk.Frame(self, bg=C["bg_card"])
-        inner.pack(expand=True, fill=tk.BOTH, padx=4, pady=4)
+        inner.pack(expand=True, fill=tk.BOTH, padx=6, pady=6)
 
-        # 图标
         self._icon_label = tk.Label(inner, text=icon, font=F["emoji"],
                                     fg=C["primary"], bg=C["bg_card"])
-        self._icon_label.pack(pady=(6, 2))
+        self._icon_label.pack(pady=(8, 4))
 
-        # 名称
         self._name_label = tk.Label(inner, text=name, font=F["h3"],
                                     fg=C["fg_secondary"], bg=C["bg_card"])
-        self._name_label.pack(pady=(0, 6))
+        self._name_label.pack(pady=(0, 8))
 
     def _bind_events(self):
         for w in (self, self._icon_label, self._name_label):
@@ -496,6 +830,18 @@ class ModuleButton(tk.Frame):
     def _on_click(self, e=None):
         if self._command:
             self._command()
+
+    def _on_theme_change(self):
+        if str(self.cget("bg")) != C["bg_card_hover"]:
+            self.config(bg=C["bg_card"], highlightbackground=C["border"])
+            for w in self.winfo_children():
+                w.config(bg=C["bg_card"])
+                for c in w.winfo_children():
+                    c.config(bg=C["bg_card"])
+
+    def destroy(self):
+        get_theme_manager().remove_listener(self._theme_cb)
+        super().destroy()
 
 
 # ==================== 配置文件读取 ====================
@@ -551,10 +897,10 @@ def load_image(path: str, size: tuple[int, int] | None = None) -> tuple[object, 
     if HAS_PIL:
         try:
             from PIL import Image as PILImage
-            img = PILImage.open(path)  # type: ignore[assignment]
+            img = PILImage.open(path)
             if size:
-                img = img.resize(size, PILImage.Resampling.LANCZOS)  # type: ignore[assignment]
-            photo = ImageTk.PhotoImage(img)  # type: ignore[arg-type]
+                img = img.resize(size, PILImage.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
             return photo, True
         except Exception:
             return None, False
@@ -562,7 +908,7 @@ def load_image(path: str, size: tuple[int, int] | None = None) -> tuple[object, 
     if size:
         return None, False
     try:
-        photo = tk.PhotoImage(file=path)  # type: ignore[assignment]
+        photo = tk.PhotoImage(file=path)
         return photo, False
     except Exception:
         return None, False
@@ -576,13 +922,13 @@ def create_bg_label(parent: tk.Widget, module_name: str,
     if photo is None:
         return None, False
 
-    label = tk.Label(parent, image=photo, borderwidth=0, highlightthickness=0)  # type: ignore[arg-type]
-    label.image = photo  # type: ignore[attr-defined]
+    label = tk.Label(parent, image=photo, borderwidth=0, highlightthickness=0)
+    label.image = photo
     return label, True
 
 
 class ImageBackgroundMixin:
-    """为窗口添加自定义 PNG 背景支持。"""
+    """为窗口添加自定义 PNG 背景。"""
 
     MODULE_NAME: str = ""
 
