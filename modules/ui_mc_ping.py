@@ -1,8 +1,6 @@
 """
-Minecraft 服务器状态查询 — PCL-CE 风格 UI
-参考 PCL-CE 的 MinecraftServerQuery.xaml 设计：
-  输入栏 + 查询按钮 → 服务器信息卡片（图标、MOTD、版本、玩家、延迟）
-支持非阻塞重复查询、自定义 PNG 背景。
+Minecraft 服务器状态查询 — 新主题风格 UI
+支持非阻塞重复查询、状态变化气泡提醒、自定义 PNG 背景。
 """
 
 import tkinter as tk
@@ -12,14 +10,12 @@ from modules import mc_ping as mod_mc_ping
 from modules.ui_common import (
     ImageBackgroundMixin, C, F, Card, ServerInfoCard,
     cfg_str, cfg_int,
-    make_button,
-    make_entry, make_label, make_checkbutton, make_spinbox,
+    make_button, make_entry, make_label,
+    make_checkbutton, make_spinbox, notify,
 )
 
 
 class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
-    """PCL-CE 风格 MC 服务器状态查询窗口"""
-
     MODULE_NAME = "mc_ping"
     WIN_W, WIN_H = 720, 520
 
@@ -34,23 +30,23 @@ class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
 
         self._repeat_active = False
         self._repeat_thread: threading.Thread | None = None
-        self._last_result = None
+        self._last_result: dict | None = None
+        self._prev_online: bool | None = None
+        self._prev_players: int | None = None
         self._query_running = False
+        self._notify_threshold = cfg_int("mc-ping", "notify_threshold", 0)
 
         self._build_ui()
         self.setup_bg(self, self.WIN_W, self.WIN_H)
 
-    # ---- UI 构建 ----
-
     def _build_ui(self):
-        # 查询栏 — 参考 PCL-CE MinecraftServerQuery.xaml 的输入+按钮布局
+        # 查询栏
         query_frame = Card(self, padding=10)
         query_frame.pack(fill=tk.X, padx=14, pady=(12, 6))
 
         row = tk.Frame(query_frame.inner, bg=C["bg_card"])
         row.pack(fill=tk.X)
 
-        # 服务器地址输入
         make_label(row, text="服务器:", bg=C["bg_card"], font=F["body"]).pack(side=tk.LEFT)
         self._host_var = tk.StringVar(value=cfg_str("mc-ping", "host", ""))
         make_entry(row, textvariable=self._host_var, width=22,
@@ -66,7 +62,7 @@ class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
 
         # 循环查询
         self._repeat_var = tk.BooleanVar(value=False)
-        make_checkbutton(row, text="自动刷新", variable=self._repeat_var,
+        make_checkbutton(row, text="监控", variable=self._repeat_var,
                          command=self._toggle_repeat,
                          bg=C["bg_card"], font=F["body"]).pack(side=tk.LEFT, padx=4)
 
@@ -75,7 +71,14 @@ class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
                      width=3, font=F["body"]).pack(side=tk.LEFT)
         make_label(row, text="秒", bg=C["bg_card"], font=F["body"]).pack(side=tk.LEFT)
 
-        # 服务器信息卡片 — 参考 PCL-CE MinecraftServer.xaml 布局
+        # 通知阈值
+        make_label(row, text="| 人数变动通知:", bg=C["bg_card"], font=F["small"]).pack(side=tk.LEFT, padx=(8, 2))
+        self._threshold_var = tk.StringVar(value=str(self._notify_threshold))
+        make_spinbox(row, from_=0, to=50, textvariable=self._threshold_var,
+                     width=3, font=F["small"]).pack(side=tk.LEFT)
+        make_label(row, text="人", bg=C["bg_card"], font=F["small"]).pack(side=tk.LEFT)
+
+        # 服务器信息卡片
         self._server_card = ServerInfoCard(self)
         self._server_card.pack(fill=tk.BOTH, expand=True, padx=14, pady=(6, 12))
 
@@ -92,8 +95,6 @@ class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
             "latency": "",
             "players": [],
         })
-
-    # ---- 查询逻辑 ----
 
     def _start_query(self):
         if self._query_running:
@@ -137,11 +138,53 @@ class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
         except Exception:
             pass
 
-    # ---- 重复查询 ----
+    def _check_notify(self, result: dict):
+        """检查状态变化并发送气泡通知。"""
+        if result.get("error"):
+            current_online = False
+            current_players = 0
+        else:
+            current_online = True
+            current_players = result.get("online", 0)
+
+        host = self._host_var.get().strip() or "服务器"
+
+        # 首次运行，仅记录状态
+        if self._prev_online is None:
+            self._prev_online = current_online
+            self._prev_players = current_players
+            return
+
+        # 状态变化通知
+        if current_online and not self._prev_online:
+            notify("Minecraft 服务器", f"🟢 {host}\n服务器已上线")
+        elif not current_online and self._prev_online:
+            err = result.get("error", "连接断开")
+            notify("Minecraft 服务器", f"🔴 {host}\n服务器已下线 ({err})", error=True)
+
+        # 人数变动通知
+        if current_online and self._prev_online:
+            try:
+                threshold = int(self._threshold_var.get() or 0)
+            except ValueError:
+                threshold = 0
+            if threshold > 0:
+                diff = current_players - self._prev_players
+                if abs(diff) >= threshold:
+                    direction = "↑" if diff > 0 else "↓"
+                    notify(
+                        "Minecraft 服务器",
+                        f"{host}\n玩家变动: {self._prev_players} → {current_players} ({direction}{abs(diff)})"
+                    )
+
+        self._prev_online = current_online
+        self._prev_players = current_players
 
     def _toggle_repeat(self):
         if self._repeat_var.get():
             self._repeat_active = True
+            self._prev_online = None
+            self._prev_players = None
             self._repeat_thread = threading.Thread(target=self._repeat_loop, daemon=True)
             self._repeat_thread.start()
         else:
@@ -159,6 +202,7 @@ class MCPingWindow(tk.Toplevel, ImageBackgroundMixin):
                 result = mod_mc_ping.query(host, port)
                 self._last_result = result
                 self._after_safe(self._show_result, result)
+                self._after_safe(self._check_notify, result)
             interval = int(self._interval_var.get() or 5)
             for _ in range(interval * 2):
                 if not self._repeat_active:

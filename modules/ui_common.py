@@ -950,6 +950,91 @@ class ImageBackgroundMixin:
         return self._has_custom_bg
 
 
+# ==================== Windows 气泡通知 ====================
+
+_NOTIFY_DATA: Optional[dict] = None
+
+
+def notify_windows(title: str, message: str, icon_type: int = 1):
+    """使用 Windows 原生通知区域显示气泡提醒。
+
+    Args:
+        title: 通知标题
+        message: 通知内容
+        icon_type: 0=无图标, 1=信息, 2=警告, 3=错误
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        NIM_ADD = 0
+        NIM_MODIFY = 1
+        NIF_MESSAGE = 1
+        NIF_ICON = 2
+        NIF_INFO = 0x10
+        WM_USER = 0x400
+
+        class NOTIFYICONDATAW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("hWnd", wintypes.HANDLE),
+                ("uID", wintypes.UINT),
+                ("uFlags", wintypes.UINT),
+                ("uCallbackMessage", wintypes.UINT),
+                ("hIcon", wintypes.HANDLE),
+                ("szTip", wintypes.WCHAR * 128),
+                ("dwState", wintypes.DWORD),
+                ("dwStateMask", wintypes.DWORD),
+                ("szInfo", wintypes.WCHAR * 256),
+                ("uVersion", wintypes.UINT),
+                ("szInfoTitle", wintypes.WCHAR * 64),
+                ("dwInfoFlags", wintypes.DWORD),
+                ("guidItem", ctypes.c_byte * 16),
+                ("hBalloonIcon", wintypes.HANDLE),
+            ]
+
+        global _NOTIFY_DATA
+        shell32 = ctypes.windll.shell32
+
+        # 创建隐藏窗口作为通知消息的接收者
+        if _NOTIFY_DATA is None:
+            hwnd = ctypes.windll.user32.CreateWindowExW(
+                0, b"STATIC", b"TableToolsNotify",
+                0, 0, 0, 0, 0,
+                0, 0, 0, 0
+            )
+            _NOTIFY_DATA = {"hwnd": hwnd, "uid": 1, "added": False}
+        else:
+            hwnd = _NOTIFY_DATA["hwnd"]
+
+        uid = 1
+        nid = NOTIFYICONDATAW()
+        nid.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
+        nid.hWnd = hwnd
+        nid.uID = uid
+        nid.uFlags = NIF_INFO | NIF_ICON | NIF_MESSAGE
+        nid.dwInfoFlags = icon_type
+        nid.hIcon = 0
+        nid.szInfo = message[:255]
+        nid.szInfoTitle = title[:63]
+        nid.uCallbackMessage = WM_USER + 1
+
+        if not _NOTIFY_DATA["added"]:
+            shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid))
+            _NOTIFY_DATA["added"] = True
+        shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+    except Exception:
+        pass
+
+
+def notify(title: str, message: str, error: bool = False):
+    """便捷通知函数。"""
+    icon = 3 if error else 1
+    notify_windows(title, message, icon)
+
+
 # ==================== 工具函数 ====================
 
 def center_window(win: tk.Toplevel, w: int, h: int):
