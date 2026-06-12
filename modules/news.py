@@ -3,14 +3,12 @@
 从 Daily Boot Chronicle 移植 -- 支持 HN 抓取 + AI 分析简报。
 """
 
+import requests
 from datetime import datetime
-
-# requests 在函数内延迟导入
 
 
 def fetch_hn_headlines(limit=10):
     """从 Hacker News API 获取标题。"""
-    import requests
     try:
         top = requests.get(
             "https://hacker-news.firebaseio.com/v0/topstories.json",
@@ -33,7 +31,6 @@ def fetch_hn_headlines(limit=10):
 
 def ai_analyze(headlines, api_url, api_key, model):
     """调用 AI 分析新闻标题并生成简报。"""
-    import requests
     news_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(headlines))
     today = datetime.now().strftime("%Y-%m-%d")
 

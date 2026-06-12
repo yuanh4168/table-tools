@@ -3,7 +3,7 @@
 从 easy-en2zh 移植  支持 MyMemory 免费 API 和 AI API 两种引擎。
 """
 
-# requests 在函数内延迟导入，避免 SSL 环境问题
+import requests
 
 
 def has_chinese(text: str) -> bool:
@@ -12,7 +12,6 @@ def has_chinese(text: str) -> bool:
 
 def translate_mymemory(text: str) -> str:
     """使用 MyMemory 免费 API 翻译。"""
-    import requests
     langpair = "zh-CN|en" if has_chinese(text) else "en|zh-CN"
     try:
         resp = requests.get(

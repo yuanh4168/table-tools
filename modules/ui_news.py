@@ -6,6 +6,7 @@
 import tkinter as tk
 import threading
 from datetime import datetime
+import requests
 from modules.ui_common import (
     ImageBackgroundMixin, C, F, Card,
     cfg_str, cfg_int,
@@ -92,7 +93,6 @@ class NewsWindow(tk.Toplevel, ImageBackgroundMixin):
         threading.Thread(target=self._fetch_worker, daemon=True).start()
 
     def _fetch_worker(self):
-        import requests
         try:
             limit = int(self._count_var.get())
         except ValueError:
@@ -144,7 +144,6 @@ class NewsWindow(tk.Toplevel, ImageBackgroundMixin):
         threading.Thread(target=self._analyze_worker, daemon=True).start()
 
     def _analyze_worker(self):
-        import requests
         news_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(self._headlines))
         today = datetime.now().strftime("%Y-%m-%d")
         try:
