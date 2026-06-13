@@ -1,9 +1,9 @@
-"""新闻简报 — 逐条显示 + AI 分析区域 expand"""
+"""新闻简报 — 支持原版(HN)、订阅(RSS)、综合(HN+RSS) 三种来源"""
 
 import flet as ft
 from datetime import datetime
 from config import cfg_str
-from modules import news as mod_news
+from modules.news import fetch_headlines, SOURCE_CHOICES
 from views.common import (
     page_wrapper, glass_card, primary_button, secondary_button,
     text_input, section_title,
@@ -25,20 +25,32 @@ class NewsView:
             border_radius=12,
         )
 
+        source_default = cfg_str("news", "source", "原版")
+        if source_default not in SOURCE_CHOICES:
+            source_default = "原版"
+        self._source_input = ft.Dropdown(
+            label="来源",
+            options=[ft.dropdown.Option(v) for v in SOURCE_CHOICES],
+            value=source_default,
+            width=120,
+            border_radius=12,
+        )
+
         self._fetch_btn = primary_button("刷新", on_click=self._do_fetch)
         self._analyze_btn = secondary_button("AI 分析", on_click=self._do_analyze)
+        self._analyze_btn.disabled = True
         self._status = ft.Text("就绪", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         self._news_list = ft.ListView(
             spacing=4, padding=8, height=350,
-            auto_scroll=True  # 自动滚动到底部
+            auto_scroll=True
         )
-        # AI 分析区域设置为 expand=True，自动占据剩余空间
         self._ai_result = text_input(label="AI 分析简报", multiline=True, expand=True)
         self._ai_result.read_only = True
 
         control_card = glass_card(
             content=ft.Row([
+                self._source_input,
                 self._count_input,
                 self._fetch_btn,
                 self._analyze_btn,
@@ -67,9 +79,9 @@ class NewsView:
                 ft.Text("AI 分析简报", size=16, weight=ft.FontWeight.BOLD,
                         color=ft.Colors.ON_SURFACE),
                 self._ai_result,
-            ], spacing=8, expand=True),  # 整个卡片 expand
+            ], spacing=8, expand=True),
             padding=16,
-            expand=True,  # 让 AI 卡片占据更多空间
+            expand=True,
         )
 
         content = ft.Column([
@@ -88,64 +100,65 @@ class NewsView:
         except ValueError:
             limit = 10
 
-        self._status.value = "抓取中..."
+        source = self._source_input.value or "原版"
+
+        self._status.value = f"正在从 {source} 抓取..."
         self._status.color = ft.Colors.PRIMARY
         self._status.update()
         self._fetch_btn.disabled = True
         self._fetch_btn.update()
 
         def worker():
-            import requests
-            try:
-                top_resp = requests.get(
-                    "https://hacker-news.firebaseio.com/v0/topstories.json", timeout=15)
-                ids = top_resp.json()[:limit]
-
-                # 清除占位符
-                self._news_list.controls.clear()
-                self._news_list.controls.append(
-                    ft.Container(
-                        content=ft.Text("正在获取新闻...", italic=True,
-                                        color=ft.Colors.ON_SURFACE_VARIANT),
-                        padding=8,
-                    )
+            self._news_list.controls.clear()
+            self._news_list.controls.append(
+                ft.Container(
+                    content=ft.Text("正在获取新闻...", italic=True,
+                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                    padding=8,
                 )
-                self.page.update()
+            )
+            self.page.update()
 
-                headlines = []
-                for idx, nid in enumerate(ids, 1):
-                    try:
-                        item_resp = requests.get(
-                            f"https://hacker-news.firebaseio.com/v0/item/{nid}.json", timeout=10)
-                        data = item_resp.json()
-                        title = data.get("title", "[无标题]") if data else "[获取失败]"
-                    except Exception:
-                        title = "[抓取失败]"
-                    headlines.append(title)
-                    self._add_single_news(idx, title)  # 逐条添加
+            # 来源标记
+            label_map = {"原版": "Hacker News", "订阅": "RSS", "综合": "原版 + RSS"}
+            src_label = label_map.get(source, source)
+            self._news_list.controls.insert(0,
+                ft.Container(
+                    content=ft.Text(f"来源: {src_label}", size=11,
+                                    color=ft.Colors.PRIMARY, italic=True),
+                    padding=ft.Padding(0, 0, 0, 4),
+                )
+            )
 
-                self._headlines = headlines
-                self._fetch_btn.disabled = False
-                self._status.value = f"共 {len(headlines)} 条"
-                self._status.color = ft.Colors.ON_SURFACE_VARIANT
-                if headlines and not headlines[0].startswith("["):
-                    self._analyze_btn.disabled = False
-            except Exception as ex:
-                self._status.value = f"抓取失败: {ex}"
-                self._status.color = ft.Colors.ERROR
-                self._fetch_btn.disabled = False
+            headlines = fetch_headlines(limit, source)
+            for idx, title in enumerate(headlines, 1):
+                self._add_single_news(idx, title)
+
+            self._headlines = headlines
+            self._fetch_btn.disabled = False
+            self._status.value = f"来源: {src_label} | 共 {len(headlines)} 条"
+            self._status.color = ft.Colors.ON_SURFACE_VARIANT
+            self._analyze_btn.disabled = not (headlines and not headlines[0].startswith("["))
             self.page.update()
 
         self.page.run_thread(worker)
 
     def _add_single_news(self, index, title):
-        """线程安全地添加单条新闻到列表末尾。"""
         color = ft.Colors.ERROR if title.startswith("[") else ft.Colors.ON_SURFACE
-        # 如果第一条是“正在获取...”占位符，则移除
         if len(self._news_list.controls) == 1 and \
            isinstance(self._news_list.controls[0].content, ft.Text) and \
            self._news_list.controls[0].content.value.startswith("正在获取"):
             self._news_list.controls.clear()
+            # 重新插入来源标记
+            source = self._source_input.value or "原版"
+            label_map = {"原版": "Hacker News", "订阅": "RSS", "综合": "原版 + RSS"}
+            self._news_list.controls.append(
+                ft.Container(
+                    content=ft.Text(f"来源: {label_map.get(source, source)}", size=11,
+                                    color=ft.Colors.PRIMARY, italic=True),
+                    padding=ft.Padding(0, 0, 0, 4),
+                )
+            )
         self._news_list.controls.append(
             ft.Container(
                 content=ft.Row([
@@ -155,7 +168,6 @@ class NewsView:
                 padding=ft.Padding(0, 2, 0, 2),
             )
         )
-        # 由于 auto_scroll=True，ListView 会自动滚动到底部
         self.page.update()
 
     def _do_analyze(self, e=None):
@@ -187,7 +199,7 @@ class NewsView:
                         "model": model,
                         "messages": [
                             {"role": "system", "content": "你是一个新闻分析助手。"},
-                            {"role": "user", "content": f"以下是 {today} 的 Hacker News 热门标题，请分析并生成简报：\n\n{news_text}"}
+                            {"role": "user", "content": f"以下是 {today} 的热门标题，请分析并生成简报：\n\n{news_text}"}
                         ],
                         "temperature": 0.5,
                         "max_tokens": 1024,

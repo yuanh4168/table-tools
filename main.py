@@ -1,16 +1,16 @@
-"""table-tools Flet 桌面工具集 — 主入口"""
+"""table-tools Flet 桌面工具集 — 自绘标题栏（完整异步修复）"""
 
 import flet as ft
-
-# Flet 0.85.3 兼容：图标常量在 Icons 类中，复制到模块级别方便访问
 import flet.controls.material.icons as _icons_mod
+
+# 兼容旧版图标常量
 for _key in dir(_icons_mod.Icons):
     if not _key.startswith("_"):
         setattr(_icons_mod, _key, getattr(_icons_mod.Icons, _key))
 
 from config import MODULE_KEYS, MODULE_NAMES, MODULE_ICONS
 
-# ---------- 主题（基于 ColorScheme 支持的参数）----------
+# ---------- 主题 ----------
 _BORDERLESS_BTN = ft.ButtonStyle(
     shape=ft.RoundedRectangleBorder(radius=12),
     side=None,
@@ -150,7 +150,7 @@ def build_rail(page, navigate):
                         ft.Icon(ft.icons.EXIT_TO_APP_ROUNDED, size=16),
                         ft.Text("退出", size=12),
                     ], tight=True),
-                    on_click=lambda e: page.window_destroy(),
+                    on_click=lambda e: page.run_task(page.window.close),  # 修复退出
                 ),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             padding=ft.Padding(0, 0, 0, 12),
@@ -202,6 +202,7 @@ def _placeholder(name):
 
 
 def main(page: ft.Page):
+    # 窗口基础设置
     page.title = "table-tools 桌面工具集"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.theme = THEME_LIGHT
@@ -212,17 +213,82 @@ def main(page: ft.Page):
     page.window.height = 720
     page.window.min_width = 800
     page.window.min_height = 500
+    # 彻底移除原生标题栏
+    page.window.frameless = True
+    page.window.title_bar_hidden = True
     page.run_task(page.window.center)
 
+    # ---------- 自绘标题栏 ----------
+    # 最大化/还原按钮（动态图标）
+    maximize_btn = ft.IconButton(
+        icon=ft.icons.CROP_SQUARE, icon_size=18,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT)
+    )
+
+    def update_maximize_icon():
+        if page.window.maximized:
+            maximize_btn.icon = ft.icons.FILTER_NONE  # 还原图标
+        else:
+            maximize_btn.icon = ft.icons.CROP_SQUARE  # 最大化图标
+        maximize_btn.update()
+
+    def on_window_resize(e):
+        update_maximize_icon()
+
+    page.on_resize = on_window_resize
+
+    def start_drag(e: ft.DragStartEvent):
+        page.run_task(page.window.start_dragging)
+
+    def minimize(e):
+        page.window.minimized = True
+        page.update()
+
+    def toggle_maximize(e):
+        page.window.maximized = not page.window.maximized
+        update_maximize_icon()
+        page.update()
+
+    def close(e):
+        page.run_task(page.window.close)
+
+    maximize_btn.on_click = toggle_maximize
+
+    # 加载图标（增大尺寸）
+    try:
+        icon_img = ft.Image(src="assets/icon_256.png", width=36, height=36)
+    except:
+        icon_img = ft.Icon(ft.icons.APP_REGISTRATION, size=36)
+
+    title_bar = ft.GestureDetector(
+        content=ft.Container(
+            content=ft.Row(
+                controls=[
+                    icon_img,
+                    ft.Text("table-tools 桌面工具集", size=16, weight=ft.FontWeight.W_500),
+                    ft.Container(expand=True),
+                    ft.IconButton(icon=ft.icons.REMOVE, icon_size=18, on_click=minimize,
+                                  style=ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT)),
+                    maximize_btn,
+                    ft.IconButton(icon=ft.icons.CLOSE, icon_size=18, on_click=close,
+                                  style=ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT)),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=ft.Padding(12, 8, 12, 8),
+            bgcolor=ft.Colors.SURFACE,
+        ),
+        on_pan_start=start_drag,
+    )
+
+    # ---------- 内容区域 ----------
     content_area = ft.Container(expand=True, bgcolor="#F5F7FA", padding=0)
 
     def navigate(name):
         global _page_history
-        if _page_history and name != _page_history[-1]:
+        if not _page_history or name != _page_history[-1]:
             _page_history.append(name)
-        elif not _page_history:
-            _page_history.append(name)
-
         is_dark = page.theme_mode == ft.ThemeMode.DARK
         content_area.bgcolor = "#121212" if is_dark else "#F5F7FA"
         content_area.content = build_page_view(page, name)
@@ -232,12 +298,22 @@ def main(page: ft.Page):
 
     rail = build_rail(page, navigate)
 
-    root = ft.Row(
-        [rail, ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE), content_area],
-        expand=True, spacing=0,
+    # 主布局
+    main_layout = ft.Column(
+        controls=[
+            title_bar,
+            ft.Row(
+                [rail, ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE), content_area],
+                expand=True, spacing=0,
+            ),
+        ],
+        spacing=0,
+        expand=True,
     )
-    page.add(root)
+
+    page.add(main_layout)
     navigate("home")
+    update_maximize_icon()  # 初始化图标状态
     page.update()
 
 

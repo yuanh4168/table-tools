@@ -35,7 +35,7 @@ class MCPingView:
         # 提前创建所有控件，确保实例稳定
         self._host_input = text_input(label="服务器地址", value=self._host, width=280)
         self._port_input = text_input(label="端口", value=self._port, width=100)
-        self._interval_input = text_input(label="间隔(秒)", value=self._interval, width=80)
+        self._interval_input = text_input(label="间隔", value=self._interval, width=80)
         self._threshold_input = text_input(
             label="通知阈值(0=关闭)", value=str(self._notify_on), width=200
         )
@@ -162,7 +162,7 @@ class MCPingView:
             icon_widget = ft.Icon(ft.icons.SPORTS_ESPORTS, size=40)
 
         info_items = [
-            ft.Row([icon_widget], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Row([icon_widget]),
             info_row("MOTD", motd),
             info_row("版本", version),
             info_row("在线", f"{online} / {max_players}"),

@@ -1,66 +1,87 @@
-"""设置页面 — 窗口模式配置"""
+"""设置页面 — 直接编辑 config.ini 配置文件"""
 
 import flet as ft
-from config import MODULE_KEYS, MODULE_NAMES, MODULE_ICONS, get_window_mode, set_window_mode
-from views.common import page_wrapper, glass_card, section_title
+import os
+from config import CONFIG_PATH
+from views.common import page_wrapper, glass_card, primary_button, secondary_button, section_title
 
 
 class SettingsView:
     def __init__(self, page, navigate=None):
         self.page = page
         self.navigate = navigate
+        self._config_content = ""
 
     def build(self):
-        mode_rows = []
-        for key in MODULE_KEYS:
-            icon = MODULE_ICONS.get(key, "?")
-            name = MODULE_NAMES.get(key, key)
-            current = get_window_mode(key)
+        # 读取当前配置文件内容
+        self._load_config_content()
 
-            def make_on_change(k, rb_new, rb_replace):
-                def on_change(e):
-                    val = "new" if rb_new.value else "replace"
-                    set_window_mode(k, val)
-                    rb_new.update()
-                    rb_replace.update()
-                return on_change
+        # 多行文本框显示和编辑配置文件
+        self._editor = ft.TextField(
+            value=self._config_content,
+            multiline=True,
+            min_lines=20,
+            max_lines=40,
+            expand=True,
+            label="config.ini 配置文件（直接编辑）",
+        )
 
-            rb_new = ft.Radio(value="new", label="新窗口")
-            rb_replace = ft.Radio(value="replace", label="替换启动器")
-            rb_group = ft.RadioGroup(
-                content=ft.Row([rb_new, rb_replace], spacing=12),
-                value=current,
-                on_change=lambda e, k=key: set_window_mode(k, e.control.value),
-            )
+        # 按钮：保存、刷新
+        save_btn = primary_button("保存", on_click=self._save_config)
+        refresh_btn = secondary_button("刷新", on_click=self._refresh_config)
 
-            row = ft.Container(
-                content=ft.Row([
-                    ft.Text(f"{icon} {name}", size=15, weight=ft.FontWeight.W_500,
-                            color=ft.Colors.ON_SURFACE, width=200),
-                    rb_group,
-                ], alignment=ft.MainAxisAlignment.START),
-                padding=ft.Padding(8, 4, 8, 4),
-                border=ft.Border(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE)),
-            )
-            mode_rows.append(row)
+        # 状态提示
+        self._status = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
+        # 卡片布局
         content = ft.Column([
             section_title("设置"),
-            ft.Container(height=8),
-            ft.Text("配置各模块的启动方式", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Container(height=12),
+            ft.Container(height=4),
             glass_card(
                 content=ft.Column([
-                    ft.Text("窗口模式", size=16, weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.ON_SURFACE),
-                    ft.Container(height=4),
-                    ft.Text("每个模块可设为「新窗口」或「替换启动器」（隐藏启动器，模块关闭后恢复）",
-                            size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Divider(height=16, color=ft.Colors.OUTLINE),
-                    ft.Column(mode_rows, spacing=2),
-                ], spacing=4),
+                    ft.Row([save_btn, refresh_btn], spacing=12),
+                    ft.Container(height=8),
+                    self._editor,
+                    self._status,
+                ], spacing=8),
                 padding=20,
+                expand=True,
             ),
-        ], spacing=8, scroll=ft.ScrollMode.AUTO)
+        ], spacing=12, scroll=ft.ScrollMode.AUTO, expand=True)
 
         return page_wrapper(content, page=self.page)
+
+    def _load_config_content(self):
+        """从磁盘读取 config.ini 内容"""
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                self._config_content = f.read()
+        except FileNotFoundError:
+            self._config_content = "; 配置文件不存在，将创建默认配置\n"
+        except Exception as e:
+            self._config_content = f"; 读取配置失败: {e}\n"
+
+    def _refresh_config(self, e=None):
+        """刷新编辑器内容（放弃修改）"""
+        self._load_config_content()
+        self._editor.value = self._config_content
+        self._status.value = "已刷新，未保存的修改已丢失"
+        self._status.color = ft.Colors.ON_SURFACE_VARIANT
+        self._status.update()
+        self._editor.update()
+
+    def _save_config(self, e=None):
+        """将编辑器内容保存到 config.ini"""
+        new_content = self._editor.value
+        try:
+            # 写入文件
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            # 更新内存中的配置缓存（可选，需要重新加载）
+            self._status.value = "✓ 配置已保存，部分模块可能需要重启后生效"
+            self._status.color = ft.Colors.TERTIARY
+            self._status.update()
+        except Exception as ex:
+            self._status.value = f"保存失败: {ex}"
+            self._status.color = ft.Colors.ERROR
+            self._status.update()

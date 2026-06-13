@@ -1,10 +1,40 @@
 """
  新闻简报  抓取各平台新闻标题，生成简报。
-从 Daily Boot Chronicle 移植 -- 支持 HN 抓取 + AI 分析简报。
+从 Daily Boot Chronicle 移植 -- 支持 HN 抓取 + RSS 源 + AI 分析简报。
 """
 
 import requests
+import time
 from datetime import datetime
+
+# RSS 支持 (移植自 Daily Boot Chronicle)
+try:
+    import feedparser
+    HAS_FEEDPARSER = True
+except ImportError:
+    HAS_FEEDPARSER = False
+
+# ============================================================
+# RSS 新闻源配置 (移植自 Daily Boot Chronicle)
+# ============================================================
+RSS_SOURCES = {
+    "sources": [
+        {"url": "https://www.engadget.com/rss.xml", "name": "Engadget", "lang": "en"},
+        {"url": "https://www.theverge.com/rss/index.xml", "name": "The Verge", "lang": "en"},
+        {"url": "https://techcrunch.com/feed/", "name": "TechCrunch", "lang": "en"},
+        {"url": "https://feeds.arstechnica.com/arstechnica/index", "name": "Ars Technica", "lang": "en"},
+        {"url": "https://www.solidot.org/index.rss", "name": "Solidot", "lang": "zh"},
+        {"url": "https://www.nhk.or.jp/rss/news/cat6.xml", "name": "NHK国际", "lang": "en"},
+    ]
+}
+
+# 三个来源选项
+# "原版" -> Hacker News
+# "订阅" -> RSS 聚合
+# "综合" -> Hacker News + RSS 聚合
+SOURCE_CHOICES = ["原版", "订阅", "综合"]
+
+RSS_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 
 def fetch_hn_headlines(limit=10):
@@ -29,6 +59,68 @@ def fetch_hn_headlines(limit=10):
         return [f"[抓取失败] {e}"]
 
 
+def fetch_rss_headlines(limit=10):
+    """从所有 RSS 源抓取新闻标题，返回综合列表。
+
+    移植自 Daily Boot Chronicle 的 NewsFetcher。
+    """
+    if not HAS_FEEDPARSER:
+        return ["[错误] 缺少 feedparser 库，请执行: pip install feedparser"]
+
+    all_items = []
+    for src in RSS_SOURCES["sources"]:
+        try:
+            resp = requests.get(
+                src["url"],
+                headers={"User-Agent": RSS_USER_AGENT},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            for entry in feed.entries[:8]:
+                title = entry.get("title", "").strip()
+                if title:
+                    all_items.append(title)
+            time.sleep(0.2)
+        except Exception:
+            pass  # 静默跳过失败源
+
+    # 去重
+    seen = set()
+    unique = []
+    for title in all_items:
+        key = title[:40]
+        if key not in seen:
+            seen.add(key)
+            unique.append(title)
+
+    return unique[:limit]
+
+
+def fetch_headlines(count=10, source="原版"):
+    """统一的新闻获取入口。"""
+    count = max(count, 1)
+    if source == "原版":
+        return fetch_hn_headlines(count)
+    elif source == "订阅":
+        return fetch_rss_headlines(count)
+    elif source == "综合":
+        half = max(count // 2, 1)
+        hn = fetch_hn_headlines(half)
+        rss = fetch_rss_headlines(count - len(hn))
+        result = hn + rss
+        # 去重
+        seen = set()
+        unique = []
+        for item in result:
+            key = item[:40]
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+        return unique[:count]
+    return fetch_hn_headlines(count)
+
+
 def ai_analyze(headlines, api_url, api_key, model):
     """调用 AI 分析新闻标题并生成简报。"""
     news_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(headlines))
@@ -51,7 +143,7 @@ def ai_analyze(headlines, api_url, api_key, model):
                         {"role": "system", "content": system_prompt},
                         {
                             "role": "user",
-                            "content": f"以下是 {today} 的 Hacker News 热门标题，请分析并生成简报：\n\n{news_text}",
+                            "content": f"以下是 {today} 的热门标题，请分析并生成简报：\n\n{news_text}",
                         },
                     ],
                     "temperature": 0.5,
@@ -78,7 +170,7 @@ def ai_analyze(headlines, api_url, api_key, model):
 
 def run(
     count=10,
-    source="china",
+    source="原版",
     analyze=False,
     api_url="https://integrate.api.nvidia.com/v1/chat/completions",
     api_key="",
@@ -89,17 +181,17 @@ def run(
     print(f"\n   今日新闻简报  {today}")
     print(f"  {'=' * 40}\n")
 
-    headlines = fetch_hn_headlines(count)
+    if source not in SOURCE_CHOICES:
+        source = "原版"
+    headlines = fetch_headlines(count, source)
 
-    label = {"china": "综合热点", "global": "全球热点", "tech": "科技热点"}.get(
-        source, "综合热点"
-    )
-    print(f"   {label} (Hacker News):")
+    print(f"  来源：{source}")
     for i, title in enumerate(headlines, 1):
         print(f"  {i:>2}. {title}")
 
+    source_map = {"原版": "Hacker News", "订阅": "RSS", "综合": "原版 + RSS"}
     print(f"\n  {'=' * 40}")
-    print(f"  来源: Hacker News | 共 {len(headlines)} 条")
+    print(f"  来源: {source_map.get(source, source)} | 共 {len(headlines)} 条")
     print()
 
     if analyze and api_key:

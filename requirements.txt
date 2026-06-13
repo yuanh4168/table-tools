@@ -1,3 +1,4 @@
 requests>=2.28.0   # 用于 translate、news、chat、mc-ping 等
 Pillow>=10.0.0     # 可选：用于自定义 PNG 背景/图标 (不安装也能正常运行)
 dnspython>=2.3.0   # 用于 mc-ping SRV 解析
+feedparser>=6.0.0  # 用于 RSS 新闻源抓取

@@ -1,12 +1,17 @@
 """
 新闻简报 — PCL-CE 风格 UI
-抓取 Hacker News 热门标题，支持 AI 分析简报。
+支持原版(HN)、订阅(RSS)、综合(HN+RSS) 三种来源，AI 分析简报。
 """
 
 import tkinter as tk
 import threading
 from datetime import datetime
 import requests
+from modules.news import (
+    fetch_hn_headlines, fetch_rss_headlines, fetch_headlines,
+    SOURCE_CHOICES,
+    ai_analyze,
+)
 from modules.ui_common import (
     ImageBackgroundMixin, C, F, Card,
     cfg_str, cfg_int,
@@ -37,8 +42,12 @@ class NewsWindow(tk.Toplevel, ImageBackgroundMixin):
 
         row = top_card.inner
         make_label(row, text="来源:", bg=C["bg_card"], font=F["body"]).pack(side=tk.LEFT)
-        self._source_var = tk.StringVar(value=cfg_str("news", "source", "china"))
-        src = make_combobox(row, values=["china", "global", "tech"],
+
+        source_default = cfg_str("news", "source", "原版")
+        if source_default not in SOURCE_CHOICES:
+            source_default = "原版"
+        self._source_var = tk.StringVar(value=source_default)
+        src = make_combobox(row, values=SOURCE_CHOICES,
                             textvariable=self._source_var, width=8)
         src.pack(side=tk.LEFT, padx=4)
 
@@ -97,40 +106,30 @@ class NewsWindow(tk.Toplevel, ImageBackgroundMixin):
             limit = int(self._count_var.get())
         except ValueError:
             limit = 10
-        try:
-            top = requests.get(
-                "https://hacker-news.firebaseio.com/v0/topstories.json", timeout=15)
-            ids = top.json()[:limit]
-            items = []
-            for nid in ids:
-                try:
-                    item = requests.get(
-                        f"https://hacker-news.firebaseio.com/v0/item/{nid}.json", timeout=10)
-                    data = item.json()
-                    if data and data.get("title"):
-                        items.append(data["title"])
-                except Exception:
-                    items.append("[抓取失败]")
-        except Exception as e:
-            items = [f"[抓取失败] {e}"]
+        source = self._source_var.get()
+        items = fetch_headlines(limit, source)
 
         self._headlines = items
-        self.after(0, self._show_list, items)
+        self.after(0, self._show_list, items, source)
         self.after(0, self._set_buttons, True)
         self.after(0, lambda: self._fetch_btn.config(text="刷新"))
 
-    def _show_list(self, items):
+    def _show_list(self, items, source=""):
         self._list_text.config(state=tk.NORMAL)
         self._list_text.delete("1.0", tk.END)
         today = datetime.now().strftime("%Y-%m-%d %A")
         self._list_text.insert(tk.END, f"{today}\n\n", "date")
         self._list_text.tag_config("date", foreground=C["warning"], font=F["h2"])
+
+        self._list_text.insert(tk.END, f"来源: {source}\n\n", "src_tag")
+        self._list_text.tag_config("src_tag", foreground=C["info"], font=F["small"])
+
         for i, title in enumerate(items, 1):
             self._list_text.insert(tk.END, f"{i:>2}. {title}\n", "hl")
         self._list_text.tag_config("hl", foreground=C["fg"], font=F["body"])
         self._list_text.config(state=tk.DISABLED)
 
-        if items and not items[0].startswith("[错误]"):
+        if items and not items[0].startswith("[错误]") and not items[0].startswith("["):
             self._analyze_btn.config(state=tk.NORMAL)
 
     def _do_analyze(self):
@@ -157,7 +156,7 @@ class NewsWindow(tk.Toplevel, ImageBackgroundMixin):
                     "model": model,
                     "messages": [
                         {"role": "system", "content": "你是一个新闻分析助手。根据提供的新闻标题列表，生成一份简洁的今日简报，包括：1) 今日热点概述（1-2句话），2) 各条新闻的简要归类分析。用中文回答，控制在300字以内。"},
-                        {"role": "user", "content": f"以下是 {today} 的 Hacker News 热门标题，请分析并生成简报：\n\n{news_text}"}
+                        {"role": "user", "content": f"以下是 {today} 的热门标题，请分析并生成简报：\n\n{news_text}"}
                     ],
                     "temperature": 0.5,
                     "max_tokens": 1024,

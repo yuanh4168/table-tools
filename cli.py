@@ -100,8 +100,9 @@ def build_parser(cfg: configparser.ConfigParser | None = None) -> argparse.Argum
 
     p_news = sub.add_parser("news", help="抓取今日新闻简报")
     p_news.add_argument("--count", type=int, default=_cfgint(cfg, "news", "count", 10), help="新闻条数")
-    p_news.add_argument("--source", choices=["global", "china", "tech"],
-                        default=_cfg(cfg, "news", "source", "china"), help="新闻来源分类")
+    p_news.add_argument("--source",
+                        choices=mod_news.SOURCE_CHOICES,
+                        default=_cfg(cfg, "news", "source", "原版"), help="新闻来源 (原版/订阅/综合)")
     p_news.add_argument("--analyze", action="store_true",
                         default=_cfgbool(cfg, "news", "analyze", False), help="启用 AI 分析简报")
     p_news.add_argument("--api-url", default=ai_url, help="AI API 地址 (默认使用 [AI] 节)")
