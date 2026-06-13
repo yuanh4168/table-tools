@@ -1,6 +1,5 @@
-"""新闻简报"""
+"""新闻简报 — 逐条显示 + AI 分析区域 expand"""
 
-import threading
 import flet as ft
 from datetime import datetime
 from config import cfg_str
@@ -26,12 +25,16 @@ class NewsView:
             border_radius=12,
         )
 
-        self._fetch_btn = primary_button("📰 刷新", on_click=self._do_fetch)
-        self._analyze_btn = secondary_button("🤖 AI 分析", on_click=self._do_analyze)
+        self._fetch_btn = primary_button("刷新", on_click=self._do_fetch)
+        self._analyze_btn = secondary_button("AI 分析", on_click=self._do_analyze)
         self._status = ft.Text("就绪", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
-        self._news_list = ft.ListView(spacing=4, padding=8, height=350)
-        self._ai_result = text_input(label="AI 分析简报", multiline=True, height=150)
+        self._news_list = ft.ListView(
+            spacing=4, padding=8, height=350,
+            auto_scroll=True  # 自动滚动到底部
+        )
+        # AI 分析区域设置为 expand=True，自动占据剩余空间
+        self._ai_result = text_input(label="AI 分析简报", multiline=True, expand=True)
         self._ai_result.read_only = True
 
         control_card = glass_card(
@@ -64,8 +67,9 @@ class NewsView:
                 ft.Text("AI 分析简报", size=16, weight=ft.FontWeight.BOLD,
                         color=ft.Colors.ON_SURFACE),
                 self._ai_result,
-            ], spacing=8),
+            ], spacing=8, expand=True),  # 整个卡片 expand
             padding=16,
+            expand=True,  # 让 AI 卡片占据更多空间
         )
 
         content = ft.Column([
@@ -74,9 +78,9 @@ class NewsView:
             control_card,
             news_card,
             ai_card,
-        ], spacing=12, scroll=ft.ScrollMode.AUTO)
+        ], spacing=12, scroll=ft.ScrollMode.AUTO, expand=True)
 
-        return page_wrapper(content)
+        return page_wrapper(content, page=self.page)
 
     def _do_fetch(self, e=None):
         try:
@@ -91,48 +95,68 @@ class NewsView:
         self._fetch_btn.update()
 
         def worker():
-            headlines = mod_news.fetch_hn_headlines(limit)
-            self._headlines = headlines
-            self.page.add(self._show_list(headlines))
-            self.page.add(self._enable_fetch())
+            import requests
+            try:
+                top_resp = requests.get(
+                    "https://hacker-news.firebaseio.com/v0/topstories.json", timeout=15)
+                ids = top_resp.json()[:limit]
+
+                # 清除占位符
+                self._news_list.controls.clear()
+                self._news_list.controls.append(
+                    ft.Container(
+                        content=ft.Text("正在获取新闻...", italic=True,
+                                        color=ft.Colors.ON_SURFACE_VARIANT),
+                        padding=8,
+                    )
+                )
+                self.page.update()
+
+                headlines = []
+                for idx, nid in enumerate(ids, 1):
+                    try:
+                        item_resp = requests.get(
+                            f"https://hacker-news.firebaseio.com/v0/item/{nid}.json", timeout=10)
+                        data = item_resp.json()
+                        title = data.get("title", "[无标题]") if data else "[获取失败]"
+                    except Exception:
+                        title = "[抓取失败]"
+                    headlines.append(title)
+                    self._add_single_news(idx, title)  # 逐条添加
+
+                self._headlines = headlines
+                self._fetch_btn.disabled = False
+                self._status.value = f"共 {len(headlines)} 条"
+                self._status.color = ft.Colors.ON_SURFACE_VARIANT
+                if headlines and not headlines[0].startswith("["):
+                    self._analyze_btn.disabled = False
+            except Exception as ex:
+                self._status.value = f"抓取失败: {ex}"
+                self._status.color = ft.Colors.ERROR
+                self._fetch_btn.disabled = False
             self.page.update()
 
-        threading.Thread(target=worker, daemon=True).start()
+        self.page.run_thread(worker)
 
-    def _show_list(self, items):
-        self._news_list.controls.clear()
-        today = datetime.now().strftime("%Y-%m-%d %A")
+    def _add_single_news(self, index, title):
+        """线程安全地添加单条新闻到列表末尾。"""
+        color = ft.Colors.ERROR if title.startswith("[") else ft.Colors.ON_SURFACE
+        # 如果第一条是“正在获取...”占位符，则移除
+        if len(self._news_list.controls) == 1 and \
+           isinstance(self._news_list.controls[0].content, ft.Text) and \
+           self._news_list.controls[0].content.value.startswith("正在获取"):
+            self._news_list.controls.clear()
         self._news_list.controls.append(
             ft.Container(
-                content=ft.Text(today, size=14, weight=ft.FontWeight.W_600,
-                               color=ft.Colors.PRIMARY),
-                padding=ft.Padding(0, 0, 0, 4),
+                content=ft.Row([
+                    ft.Text(f"{index:>2}.", size=13, color=ft.Colors.PRIMARY, width=30),
+                    ft.Text(title, size=13, color=color),
+                ], spacing=4),
+                padding=ft.Padding(0, 2, 0, 2),
             )
         )
-        for i, title in enumerate(items, 1):
-            color = ft.Colors.ERROR if title.startswith("[") else ft.Colors.ON_SURFACE
-            self._news_list.controls.append(
-                ft.Container(
-                    content=ft.Row([
-                        ft.Text(f"{i:>2}.", size=13, color=ft.Colors.PRIMARY, width=30),
-                        ft.Text(title, size=13, color=color),
-                    ], spacing=4),
-                    padding=ft.Padding(0, 2, 0, 2),
-                )
-            )
-        self._news_list.update()
-        if items and not items[0].startswith("["):
-            self._analyze_btn.disabled = False
-            self._analyze_btn.update()
-        self._status.value = f"共 {len(items)} 条"
-        self._status.color = ft.Colors.ON_SURFACE_VARIANT
-        self._status.update()
-        return ft.Container()
-
-    def _enable_fetch(self):
-        self._fetch_btn.disabled = False
-        self._fetch_btn.update()
-        return ft.Container()
+        # 由于 auto_scroll=True，ListView 会自动滚动到底部
+        self.page.update()
 
     def _do_analyze(self, e=None):
         if not self._headlines:
@@ -157,46 +181,37 @@ class NewsView:
                 model = cfg_str("AI", "model", "qwen/qwen3-coder-480b-a35b-instruct")
 
                 if not api_key:
-                    self.page.add(self._show_analysis("[错误] 未配置 API 密钥"))
-                    self.page.update()
-                    return
-
-                resp = requests.post(api_url, json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": "你是一个新闻分析助手。"},
-                        {"role": "user", "content": f"以下是 {today} 的 Hacker News 热门标题，请分析并生成简报：\n\n{news_text}"}
-                    ],
-                    "temperature": 0.5,
-                    "max_tokens": 1024,
-                }, headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                }, timeout=120)
-                data = resp.json()
-                if resp.status_code != 200:
-                    result = f"[分析失败] {data.get('error', {}).get('message', str(data))}"
+                    result = "[错误] 未配置 API 密钥"
                 else:
-                    result = data["choices"][0]["message"]["content"]
+                    resp = requests.post(api_url, json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": "你是一个新闻分析助手。"},
+                            {"role": "user", "content": f"以下是 {today} 的 Hacker News 热门标题，请分析并生成简报：\n\n{news_text}"}
+                        ],
+                        "temperature": 0.5,
+                        "max_tokens": 1024,
+                    }, headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    }, timeout=120)
+                    data = resp.json()
+                    if resp.status_code != 200:
+                        result = f"[分析失败] {data.get('error', {}).get('message', str(data))}"
+                    else:
+                        result = data["choices"][0]["message"]["content"]
             except Exception as ex:
                 result = f"[分析异常] {ex}"
 
-            self.page.add(self._show_analysis(result))
+            self._ai_result.value = result
+            self._ai_result.read_only = True
+            self._analyze_btn.disabled = False
+            if result.startswith("["):
+                self._status.value = "分析失败"
+                self._status.color = ft.Colors.ERROR
+            else:
+                self._status.value = "分析完成"
+                self._status.color = ft.Colors.TERTIARY
             self.page.update()
 
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _show_analysis(self, result):
-        self._ai_result.value = result
-        self._ai_result.read_only = True
-        self._ai_result.update()
-        self._analyze_btn.disabled = False
-        self._analyze_btn.update()
-        if result.startswith("["):
-            self._status.value = "分析失败"
-            self._status.color = ft.Colors.ERROR
-        else:
-            self._status.value = "分析完成 ✓"
-            self._status.color = ft.Colors.TERTIARY
-        self._status.update()
-        return ft.Container()
+        self.page.run_thread(worker)

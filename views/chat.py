@@ -1,6 +1,5 @@
 """AI 对话"""
 
-import threading
 import flet as ft
 from config import cfg_str
 from views.common import (
@@ -79,7 +78,7 @@ class ChatView:
             chat_card,
         ], spacing=12, scroll=ft.ScrollMode.AUTO)
 
-        return page_wrapper(content)
+        return page_wrapper(content, page=self.page)
 
     def _send(self, e=None):
         text = self._msg_input.value
@@ -106,7 +105,10 @@ class ChatView:
                 model = self._model_input.value.strip()
 
                 if not api_key:
-                    self.page.add(self._handle_error("请输入 API 密钥"))
+                    self._remove_thinking()
+                    self._add_msg_raw("system", "错误: 请输入 API 密钥")
+                    self._thinking = False
+                    self._send_btn.disabled = False
                     self.page.update()
                     return
 
@@ -124,25 +126,49 @@ class ChatView:
                 data = resp.json()
                 if resp.status_code != 200:
                     err = data.get("error", {}).get("message", str(data))
-                    self.page.add(self._handle_error(f"API 错误 ({resp.status_code}): {err}"))
+                    self._remove_thinking()
+                    self._add_msg_raw("system", f"错误: API 错误 ({resp.status_code}): {err}")
+                    self._thinking = False
+                    self._send_btn.disabled = False
                     self.page.update()
                     return
                 content = data["choices"][0]["message"]["content"]
                 self._messages.append({"role": "assistant", "content": content})
-                self.page.add(self._remove_thinking())
-                self.page.add(self._add_msg("assistant", content))
+                self._remove_thinking()
+                self._add_msg_raw("assistant", content)
             except Exception as ex:
-                self.page.add(self._handle_error(str(ex)))
+                self._remove_thinking()
+                self._add_msg_raw("system", f"错误: {ex}")
             finally:
                 self._thinking = False
-                self.page.add(self._re_enable_send())
+                self._send_btn.disabled = False
             self.page.update()
 
-        threading.Thread(target=worker, daemon=True).start()
+        self.page.run_thread(worker)
+
+    def _add_msg_raw(self, role, content):
+        """线程安全的消息添加（不调用 .update()）。"""
+        colors = {"user": ft.Colors.PRIMARY, "assistant": ft.Colors.TERTIARY, "system": ft.Colors.ERROR}
+        labels = {"user": "你", "assistant": "AI", "system": "系统"}
+        label = labels.get(role, role)
+        self._chat_display.controls.append(
+            ft.Container(
+                content=ft.Column([
+                    ft.Text(label, size=13, weight=ft.FontWeight.BOLD,
+                            color=colors.get(role, ft.Colors.ON_SURFACE)),
+                    ft.Container(
+                        content=ft.Text(content, size=14, color=ft.Colors.ON_SURFACE),
+                        bgcolor=ft.Colors.SURFACE_CONTAINER,
+                        border_radius=8,
+                        padding=10,
+                    ),
+                ], spacing=4),
+            )
+        )
 
     def _add_msg(self, role, content):
         colors = {"user": ft.Colors.PRIMARY, "assistant": ft.Colors.TERTIARY, "system": ft.Colors.ERROR}
-        labels = {"user": "🧑 你", "assistant": "🤖 AI", "system": "⚙ 系统"}
+        labels = {"user": "你", "assistant": "AI", "system": "系统"}
         label = labels.get(role, role)
 
         if role == "system" and content == "思考中...":

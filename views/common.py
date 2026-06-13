@@ -51,14 +51,14 @@ def primary_button(text, on_click=None, icon=None, disabled=False, expand=False)
 
 
 def secondary_button(text, on_click=None, icon=None, disabled=False):
-    """次要按钮 — 描边，圆角12px。"""
+    """次要按钮 — 无边框，圆角12px。"""
     content = ft.Text(text)
     return ft.OutlinedButton(
         content=content, on_click=on_click, disabled=disabled,
         style=ft.ButtonStyle(
             color=_C_ON_SURFACE_VARIANT,
             shape=ft.RoundedRectangleBorder(radius=12),
-            side=ft.BorderSide(1, _C_OUTLINE),
+            side=None,
             padding=ft.Padding(16, 10, 16, 10),
             animation_duration=200,
         ),
@@ -66,8 +66,8 @@ def secondary_button(text, on_click=None, icon=None, disabled=False):
 
 
 def text_input(label="", value="", multiline=False, height=120, width=None,
-               on_change=None, password=False, read_only=False):
-    """统一风格输入框 — 圆角12px。"""
+               on_change=None, password=False, read_only=False, expand=False):
+    """统一风格输入框 — 支持 expand 参数"""
     return ft.TextField(
         label=label, value=value,
         multiline=multiline,
@@ -78,18 +78,21 @@ def text_input(label="", value="", multiline=False, height=120, width=None,
         password=password, can_reveal_password=password,
         read_only=read_only, on_change=on_change,
         border_radius=12,
-        border_color=_C_OUTLINE, focused_border_color=_C_PRIMARY,
+        border=ft.Border.all(0, ft.Colors.TRANSPARENT),
+        focused_border_color=ft.Colors.PRIMARY,
         text_size=14,
+        expand=expand,
     )
 
 
 def dropdown(label="", options=None, value=None, on_select=None, width=200):
-    """统一下拉框 — 圆角12px。"""
+    """统一下拉框 — 圆角12px，无边框。"""
     opts = [ft.dropdown.Option(o) for o in (options or [])]
     return ft.Dropdown(
         label=label, options=opts, value=value, on_select=on_select,
         width=width, border_radius=12,
-        border_color=_C_OUTLINE, focused_border_color=_C_PRIMARY,
+        border=ft.Border.all(0, ft.Colors.TRANSPARENT),
+        focused_border_color=_C_PRIMARY,
         text_size=14,
     )
 
@@ -98,15 +101,17 @@ def section_title(text):
     return ft.Text(text, size=20, weight=ft.FontWeight.BOLD, color=_C_ON_SURFACE)
 
 
-def page_wrapper(content, scroll=True):
-    """页面外层包装 — 渐变背景。"""
+def page_wrapper(content, scroll=True, page=None):
+    """页面外层包装 — 渐变背景，支持深色模式。"""
+    is_dark = page.theme_mode == ft.ThemeMode.DARK if page else False
     items = content if isinstance(content, list) else [content]
+    gcolors = ["#1E1E1E", "#121212"] if is_dark else ["#F5F7FA", "#E4E8F0"]
     return ft.Container(
         content=ft.Column(items, scroll=ft.ScrollMode.AUTO if scroll else ft.ScrollMode.DISABLED, spacing=16),
         padding=ft.Padding(24, 24, 24, 24), expand=True,
         gradient=ft.LinearGradient(
             begin=ft.Alignment(0, -1), end=ft.Alignment(0, 1),
-            colors=["#F5F7FA", "#E4E8F0"],
+            colors=gcolors,
         ),
         border_radius=ft.BorderRadius(12, 0, 0, 0),
     )

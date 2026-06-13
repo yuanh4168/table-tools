@@ -4,7 +4,6 @@ import datetime
 import os
 import re
 import tempfile
-import threading
 import flet as ft
 from config import cfg_str
 from views.common import (
@@ -137,7 +136,7 @@ def parse_eulogy_text(text):
 
 def render_eulogy_html(data):
     title, body = data["title"], data["body"]
-    processed = body.replace("<<IMG:", '<div class="img-ph">📷 ')
+    processed = body.replace("<<IMG:", '<div class="img-ph">[图片] ')
     processed = processed.replace(">>", '</div>')
     paragraphs = processed.split("\n\n")
     body_html = "".join(f"<p>  {p.replace(chr(10), '<br>')}</p>"
@@ -150,7 +149,7 @@ h1{{text-align:center;font-size:1.8rem;color:#b45f2b;}}
 p{{text-indent:2em;margin-bottom:1.2em;line-height:1.7;}}
 .img-ph{{border:2px dashed #c0392b;background:#fff0f0;padding:12px;margin:15px 0;border-radius:16px;text-align:center;}}
 </style></head><body>
-<div class="article"><h1>📖 {_esc(title)}</h1>{body_html}<p class="quote" style="text-align:center;margin-top:30px;">恩情似海，铭记于心</p></div></body></html>"""
+<div class="article"><h1>{_esc(title)}</h1>{body_html}<p class="quote" style="text-align:center;margin-top:30px;">恩情似海，铭记于心</p></div></body></html>"""
 
 
 def _extract(text, pattern, default=""):
@@ -178,7 +177,7 @@ class DocumentView:
 
     def build(self):
         self._tab_index = 0
-        tab_data = [("📄 红头公文", 0), ("📖 恩情文章", 1), ("📝 简易模板", 2)]
+        tab_data = [("红头公文", 0), ("恩情文章", 1), ("简易模板", 2)]
         tab_btns = []
 
         def make_tab_click(idx):
@@ -222,7 +221,7 @@ class DocumentView:
             self._simple_content,
         ], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
 
-        return page_wrapper(c)
+        return page_wrapper(c, page=self.page)
 
     # ========== 红头公文 ==========
 
@@ -248,8 +247,8 @@ class DocumentView:
             ft.Row([self._red_words, self._red_table], spacing=12),
             ft.Row([
                 primary_button("生成提示词", on_click=self._gen_red_prompt),
-                secondary_button("🤖 AI 生成全文", on_click=self._gen_red_full),
-                secondary_button("🌐 浏览器预览", on_click=self._preview_red_html),
+                secondary_button("AI 生成全文", on_click=self._gen_red_full),
+                secondary_button("浏览器预览", on_click=self._preview_red_html),
                 self._red_status,
             ], spacing=12, wrap=True),
         ], spacing=12)
@@ -269,7 +268,7 @@ class DocumentView:
         self._red_result.read_only = False
         self._red_result.update()
         self._red_result.read_only = True
-        self._red_status.value = "提示词已生成 ✓"
+        self._red_status.value = "提示词已生成"
         self._red_status.color = ft.Colors.TERTIARY
         self._red_status.update()
 
@@ -289,26 +288,19 @@ class DocumentView:
 
         def worker():
             result = _call_ai_api(prompt)
-            self.page.add(self._show_red_result(result))
+            self._red_result.value = result
+            self._red_result.read_only = True
+            if not result.startswith("[错误]"):
+                data = parse_red_text(result)
+                self._current_html = render_red_html(data)
+                self._red_status.value = "AI 生成完成 - 可浏览器预览"
+                self._red_status.color = ft.Colors.TERTIARY
+            else:
+                self._red_status.value = "生成失败"
+                self._red_status.color = ft.Colors.ERROR
             self.page.update()
 
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _show_red_result(self, result):
-        self._red_result.value = result
-        self._red_result.read_only = False
-        self._red_result.update()
-        self._red_result.read_only = True
-        if not result.startswith("[错误]"):
-            data = parse_red_text(result)
-            self._current_html = render_red_html(data)
-            self._red_status.value = "AI 生成完成 ✓ 可浏览器预览"
-            self._red_status.color = ft.Colors.TERTIARY
-        else:
-            self._red_status.value = "生成失败"
-            self._red_status.color = ft.Colors.ERROR
-        self._red_status.update()
-        return ft.Container()
+        self.page.run_thread(worker)
 
     def _preview_red_html(self, e=None):
         if self._current_html:
@@ -336,8 +328,8 @@ class DocumentView:
             ft.Row([self._e_place, self._e_time, self._e_img], spacing=12),
             ft.Row([
                 primary_button("生成提示词", on_click=self._gen_eulogy_prompt),
-                secondary_button("🤖 AI 生成全文", on_click=self._gen_eulogy_full),
-                secondary_button("🌐 浏览器预览", on_click=self._preview_eulogy_html),
+                secondary_button("AI 生成全文", on_click=self._gen_eulogy_full),
+                secondary_button("浏览器预览", on_click=self._preview_eulogy_html),
                 self._e_status,
             ], spacing=12, wrap=True),
         ], spacing=12)
@@ -356,7 +348,7 @@ class DocumentView:
         self._e_result.read_only = False
         self._e_result.update()
         self._e_result.read_only = True
-        self._e_status.value = "提示词已生成 ✓"
+        self._e_status.value = "提示词已生成"
         self._e_status.color = ft.Colors.TERTIARY
         self._e_status.update()
 
@@ -375,26 +367,19 @@ class DocumentView:
 
         def worker():
             result = _call_ai_api(prompt)
-            self.page.add(self._show_eulogy_result(result))
+            self._e_result.value = result
+            self._e_result.read_only = True
+            if not result.startswith("[错误]"):
+                data = parse_eulogy_text(result)
+                self._eulogy_html = render_eulogy_html(data)
+                self._e_status.value = "AI 生成完成"
+                self._e_status.color = ft.Colors.TERTIARY
+            else:
+                self._e_status.value = "生成失败"
+                self._e_status.color = ft.Colors.ERROR
             self.page.update()
 
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _show_eulogy_result(self, result):
-        self._e_result.value = result
-        self._e_result.read_only = False
-        self._e_result.update()
-        self._e_result.read_only = True
-        if not result.startswith("[错误]"):
-            data = parse_eulogy_text(result)
-            self._eulogy_html = render_eulogy_html(data)
-            self._e_status.value = "AI 生成完成 ✓"
-            self._e_status.color = ft.Colors.TERTIARY
-        else:
-            self._e_status.value = "生成失败"
-            self._e_status.color = ft.Colors.ERROR
-        self._e_status.update()
-        return ft.Container()
+        self.page.run_thread(worker)
 
     def _preview_eulogy_html(self, e=None):
         if self._eulogy_html:
@@ -491,7 +476,7 @@ class DocumentView:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(self._gen_simple())
-            self._s_status.value = "已导出 ✓"
+            self._s_status.value = "已导出"
             self._s_status.color = ft.Colors.TERTIARY
             self._s_status.update()
         except Exception as ex:
@@ -504,7 +489,7 @@ class DocumentView:
         try:
             import pyperclip
             pyperclip.copy(text)
-            self._s_status.value = "已复制 ✓"
+            self._s_status.value = "已复制"
             self._s_status.color = ft.Colors.TERTIARY
         except ImportError:
             self._s_status.value = "需要 pyperclip"

@@ -1,10 +1,29 @@
 """table-tools Flet 桌面工具集 — 主入口"""
 
 import flet as ft
+
+# Flet 0.85.3 兼容：图标常量在 Icons 类中，复制到模块级别方便访问
+import flet.controls.material.icons as _icons_mod
+for _key in dir(_icons_mod.Icons):
+    if not _key.startswith("_"):
+        setattr(_icons_mod, _key, getattr(_icons_mod.Icons, _key))
+
 from config import MODULE_KEYS, MODULE_NAMES, MODULE_ICONS
 
 # ---------- 主题（基于 ColorScheme 支持的参数）----------
+_BORDERLESS_BTN = ft.ButtonStyle(
+    shape=ft.RoundedRectangleBorder(radius=12),
+    side=None,
+    animation_duration=200,
+)
+_BORDERLESS_TEXT_BTN = ft.ButtonStyle(
+    shape=ft.RoundedRectangleBorder(radius=8),
+    side=None,
+    animation_duration=200,
+)
+
 THEME_LIGHT = ft.Theme(
+    font_family="Microsoft YaHei",
     color_scheme=ft.ColorScheme(
         primary="#2C83FD",
         on_primary=ft.Colors.WHITE,
@@ -26,9 +45,14 @@ THEME_LIGHT = ft.Theme(
         on_inverse_surface="#EDEDED",
     ),
     use_material3=True,
+    button_theme=_BORDERLESS_BTN,
+    filled_button_theme=ft.FilledButtonTheme(style=_BORDERLESS_BTN),
+    outlined_button_theme=ft.OutlinedButtonTheme(style=_BORDERLESS_BTN),
+    text_button_theme=ft.TextButtonTheme(style=_BORDERLESS_TEXT_BTN),
 )
 
 THEME_DARK = ft.Theme(
+    font_family="Microsoft YaHei",
     color_scheme=ft.ColorScheme(
         primary="#4D9EFF",
         on_primary=ft.Colors.WHITE,
@@ -50,6 +74,10 @@ THEME_DARK = ft.Theme(
         on_inverse_surface="#18181A",
     ),
     use_material3=True,
+    button_theme=_BORDERLESS_BTN,
+    filled_button_theme=ft.FilledButtonTheme(style=_BORDERLESS_BTN),
+    outlined_button_theme=ft.OutlinedButtonTheme(style=_BORDERLESS_BTN),
+    text_button_theme=ft.TextButtonTheme(style=_BORDERLESS_TEXT_BTN),
 )
 
 # ---------- 全局状态 ----------
@@ -62,11 +90,16 @@ def build_rail(page, navigate):
         icon=ft.icons.HOME_ROUNDED, selected_icon=ft.icons.HOME_ROUNDED, label="首页",
     )]
     for key in MODULE_KEYS:
-        destinations.append(ft.NavigationRailDestination(
-            icon_content=ft.Text(MODULE_ICONS.get(key, "?"), size=18),
-            selected_icon_content=ft.Text(MODULE_ICONS.get(key, "?"), size=18),
-            label=MODULE_NAMES.get(key, key),
-        ))
+        _ic = getattr(ft.icons, MODULE_ICONS.get(key, ""), None)
+        if _ic:
+            destinations.append(ft.NavigationRailDestination(
+                icon=_ic, selected_icon=_ic, label=MODULE_NAMES.get(key, key),
+            ))
+        else:
+            destinations.append(ft.NavigationRailDestination(
+                icon=ft.Text(key[0].upper(), size=18), selected_icon=ft.Text(key[0].upper(), size=18),
+                label=MODULE_NAMES.get(key, key),
+            ))
     destinations.append(ft.NavigationRailDestination(
         icon=ft.icons.SETTINGS_ROUNDED, selected_icon=ft.icons.SETTINGS_ROUNDED, label="设置",
     ))
@@ -179,7 +212,7 @@ def main(page: ft.Page):
     page.window.height = 720
     page.window.min_width = 800
     page.window.min_height = 500
-    page.window.center()
+    page.run_task(page.window.center)
 
     content_area = ft.Container(expand=True, bgcolor="#F5F7FA", padding=0)
 
@@ -209,4 +242,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.run(main)

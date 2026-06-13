@@ -28,8 +28,8 @@ class PromptView:
         self._topic_input = text_input(label="主题/需求描述", multiline=True, height=120)
         self._extra_input = text_input(label="额外要求（可选）", multiline=True, height=80)
 
-        self._gen_btn = primary_button("⚡ 生成提示词", on_click=self._generate)
-        self._copy_btn = secondary_button("📋 复制", on_click=self._copy)
+        self._gen_btn = primary_button("生成提示词", on_click=self._generate)
+        self._copy_btn = secondary_button("复制", on_click=self._copy)
         self._status = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         self._result_output = text_input(label="生成的提示词", multiline=True, height=250)
@@ -57,7 +57,7 @@ class PromptView:
             result_card,
         ], spacing=12, scroll=ft.ScrollMode.AUTO)
 
-        return page_wrapper(c)
+        return page_wrapper(c, page=self.page)
 
     def _generate(self, e=None):
         ptype = self._type_dd.value or "通用"
@@ -93,7 +93,7 @@ class PromptView:
         self._result_output.read_only = False
         self._result_output.update()
         self._result_output.read_only = True
-        self._status.value = "提示词已生成 ✓"
+        self._status.value = "提示词已生成"
         self._status.color = ft.Colors.TERTIARY
         self._status.update()
 
@@ -102,7 +102,7 @@ class PromptView:
             try:
                 import pyperclip
                 pyperclip.copy(self._result_output.value)
-                self._status.value = "已复制 ✓"
+                self._status.value = "已复制"
                 self._status.color = ft.Colors.TERTIARY
             except ImportError:
                 self._status.value = "需要 pyperclip"

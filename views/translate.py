@@ -1,6 +1,5 @@
 """翻译助手"""
 
-import threading
 import flet as ft
 from modules import translate as mod_translate
 from views.common import (
@@ -27,9 +26,9 @@ class TranslateView:
             border_radius=12,
         )
 
-        self._translate_btn = primary_button("🌐 翻译", on_click=self._do_translate)
-        self._paste_btn = secondary_button("📋 从剪贴板读取", on_click=self._paste)
-        self._copy_btn = secondary_button("📋 复制译文", on_click=self._copy_result)
+        self._translate_btn = primary_button("翻译", on_click=self._do_translate)
+        self._paste_btn = secondary_button("从剪贴板读取", on_click=self._paste)
+        self._copy_btn = secondary_button("复制译文", on_click=self._copy_result)
         self._clear_btn = secondary_button("清空", on_click=self._clear)
         self._status = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
@@ -52,7 +51,7 @@ class TranslateView:
             form,
         ], spacing=12, scroll=ft.ScrollMode.AUTO)
 
-        return page_wrapper(content)
+        return page_wrapper(content, page=self.page)
 
     def _do_translate(self, e=None):
         text = self._src_input.value
@@ -73,10 +72,14 @@ class TranslateView:
 
         def worker():
             result = mod_translate.translate_mymemory(text.strip())
-            self.page.add(self._show_result(result))
+            self._dst_output.value = result
+            self._dst_output.read_only = True
+            self._status.value = "翻译完成" if not result.startswith("[错误]") else "翻译失败"
+            self._status.color = ft.Colors.TERTIARY if not result.startswith("[错误]") else ft.Colors.ERROR
+            self._translate_btn.disabled = False
             self.page.update()
 
-        threading.Thread(target=worker, daemon=True).start()
+        self.page.run_thread(worker)
 
     def _show_result(self, result):
         self._dst_output.value = result
@@ -88,7 +91,7 @@ class TranslateView:
             self._status.value = "翻译失败"
             self._status.color = ft.Colors.ERROR
         else:
-            self._status.value = "翻译完成 ✓"
+            self._status.value = "翻译完成"
             self._status.color = ft.Colors.TERTIARY
         self._status.update()
         return ft.Container()
@@ -110,7 +113,7 @@ class TranslateView:
             try:
                 import pyperclip
                 pyperclip.copy(self._dst_output.value)
-                self._status.value = "已复制 ✓"
+                self._status.value = "已复制"
                 self._status.color = ft.Colors.TERTIARY
                 self._status.update()
             except ImportError:

@@ -63,4 +63,4 @@ class SettingsView:
             ),
         ], spacing=8, scroll=ft.ScrollMode.AUTO)
 
-        return page_wrapper(content)
+        return page_wrapper(content, page=self.page)

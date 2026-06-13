@@ -28,7 +28,7 @@ class ChessView:
                                     color=ft.Colors.PRIMARY)
         self._move_log = ft.ListView(spacing=2, padding=4, height=200)
 
-        self._reset_btn = secondary_button("🔄 重新开局", on_click=self._reset)
+        self._reset_btn = secondary_button("重新开局", on_click=self._reset)
         self._undo_btn = secondary_button("↩ 悔棋", on_click=self._undo)
 
         self._render_board()
@@ -64,7 +64,7 @@ class ChessView:
             ft.Container(content=log_card, expand=True),
         ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.START)
 
-        return page_wrapper(content)
+        return page_wrapper(content, page=self.page)
 
     def _render_board(self):
         self._board_grid.controls.clear()
@@ -113,7 +113,6 @@ class ChessView:
             spacing=2, alignment=ft.MainAxisAlignment.CENTER
         )
         self._board_grid.controls.append(col_labels)
-        self._board_grid.update()
 
     def _on_cell_click(self, ri, ci):
         if self._game_over:
@@ -129,6 +128,7 @@ class ChessView:
                (self._current_turn == "black" and is_black_piece):
                 self._selected = (ri, ci)
                 self._render_board()
+                self._board_grid.update()
         else:
             sr, sc = self._selected
             # 如果点击的是自己的棋子，切换选择
@@ -136,6 +136,7 @@ class ChessView:
                (self._current_turn == "black" and is_black_piece):
                 self._selected = (ri, ci)
                 self._render_board()
+                self._board_grid.update()
                 return
 
             # 尝试走棋
@@ -159,6 +160,7 @@ class ChessView:
             self._move_log.scroll_to(offset=-1, duration=100)
 
             self._render_board()
+            self._board_grid.update()
 
     def _reset(self, e=None):
         self._board = copy.deepcopy(INIT_BOARD)
@@ -169,6 +171,7 @@ class ChessView:
         self._status_text.color = ft.Colors.PRIMARY
         self._move_log.controls.clear()
         self._render_board()
+        self._board_grid.update()
         self._move_log.update()
 
     def _undo(self, e=None):

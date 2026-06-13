@@ -66,9 +66,8 @@ def set_window_mode(key: str, mode: str):
 
 # 模块注册表
 MODULE_KEYS = [
-    "mc_ping", "translate", "chat", "news",
-    "document", "prompt", "project-tree",
-    "chess",
+    "mc_ping", "translate", "chat", "news", "prompt", "project-tree"
+    
 ]
 
 MODULE_NAMES = {
@@ -83,14 +82,14 @@ MODULE_NAMES = {
 }
 
 MODULE_ICONS = {
-    "mc_ping": "⛏",
-    "translate": "🌐",
-    "chat": "💬",
-    "news": "📰",
-    "document": "📄",
-    "prompt": "⚡",
-    "project-tree": "🌳",
-    "chess": "♚",
+    "mc_ping": "DEVICES",
+    "translate": "TRANSLATE",
+    "chat": "CHAT",
+    "news": "NEWSPAPER",
+    "document": "DESCRIPTION",
+    "prompt": "ELECTRIC_BOLT",
+    "project-tree": "ACCOUNT_TREE",
+    "chess": "SPORTS_ESPORTS",
 }
 
 MODULE_DESC = {
